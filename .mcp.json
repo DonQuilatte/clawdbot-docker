@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "MCP_DOCKER": {
+      "command": "docker",
+      "args": ["mcp", "gateway", "run"],
+      "type": "stdio"
+    }
+  },
+  "context7Libraries": {
+    "docker": "/docker/docs",
+    "compose": "/docker/compose",
+    "clawdbot": "/clawdbot/clawdbot",
+    "clawdbot-full": "/llmstxt/clawd_bot_llms-full_txt",
+    "antigravity": "/alphaperseii3000/google-antigravity-docs",
+    "antigravity-tools": "/lbjlaq/antigravity-manager",
+    "exa": "/websites/exa_ai",
+    "exa-api": "/llmstxt/exa_ai_llms_txt"
+  }
+}
