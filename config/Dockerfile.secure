@@ -1,0 +1,61 @@
+# Security-hardened Dockerfile for Clawdbot
+FROM node:18-alpine AS base
+
+# Security: Install security updates
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+    dumb-init \
+    curl \
+    ca-certificates && \
+    rm -rf /var/cache/apk/*
+
+# Security: Create non-root user
+RUN addgroup -g 1000 clawdbot && \
+    adduser -D -u 1000 -G clawdbot clawdbot
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app /data /tmp /var/tmp /run && \
+    chown -R clawdbot:clawdbot /app /data /tmp /var/tmp /run
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY --chown=clawdbot:clawdbot package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Copy application code
+COPY --chown=clawdbot:clawdbot . .
+
+# Security: Remove unnecessary files
+RUN rm -rf \
+    .git \
+    .github \
+    tests \
+    docs \
+    *.md \
+    .env.example
+
+# Security: Set file permissions
+RUN chmod -R 555 /app && \
+    chmod -R 755 /data
+
+# Switch to non-root user
+USER clawdbot
+
+# Security: Use dumb-init to handle signals properly
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Expose port
+EXPOSE 3000
+
+# Start application
+CMD ["node", "src/index.js"]

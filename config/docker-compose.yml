@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  clawdbot-gateway:
+    image: clawdbot/gateway:latest
+    container_name: clawdbot-gateway
+    restart: unless-stopped
+    ports:
+      - "${CLAWDBOT_GATEWAY_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - CLAWDBOT_HOME=/data
+      - LOG_LEVEL=${CLAWDBOT_LOG_LEVEL:-info}
+      - GATEWAY_BIND=${CLAWDBOT_GATEWAY_BIND:-localhost}
+    volumes:
+      - ${CLAWDBOT_HOME_VOLUME:-./data}:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - clawdbot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+
+  clawdbot-cli:
+    image: clawdbot/cli:latest
+    container_name: clawdbot-cli
+    profiles:
+      - cli
+    environment:
+      - CLAWDBOT_HOME=/data
+      - LOG_LEVEL=${CLAWDBOT_LOG_LEVEL:-info}
+    volumes:
+      - ${CLAWDBOT_HOME_VOLUME:-./data}:/data
+    networks:
+      - clawdbot-network
+    depends_on:
+      - clawdbot-gateway
+
+networks:
+  clawdbot-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  clawdbot-data:
+    driver: local
