@@ -4,51 +4,34 @@
 
 set -e
 
+# shellcheck source=lib/common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+
 echo "🐳 OrbStack Installation for Remote Mac"
 echo "========================================"
 echo ""
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Load configuration
+load_env
 
-# Configuration
-REMOTE_HOST="192.168.1.245"
-REMOTE_USER="tywhitaker"
-
-# Functions
-print_step() {
-    echo -e "${BLUE}➤${NC} $1"
-}
-
-print_success() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
+# Configuration from environment (no hardcoded values)
+: "${REMOTE_HOST:?Set REMOTE_HOST in .env or environment}"
+: "${REMOTE_USER:?Set REMOTE_USER in .env or environment}"
 
 # Check prerequisites
 check_prereqs() {
     print_step "Checking prerequisites..."
 
     # Test SSH connection
-    if ! ssh -o ConnectTimeout=5 -o BatchMode=yes ${REMOTE_USER}@${REMOTE_HOST} "echo test" &>/dev/null; then
+    if ! ssh_check "${REMOTE_USER}@${REMOTE_HOST}"; then
         print_error "Cannot SSH to ${REMOTE_USER}@${REMOTE_HOST}"
         exit 1
     fi
     print_success "SSH connection verified"
 
     # Check if Homebrew is installed on remote
-    if ! ssh ${REMOTE_USER}@${REMOTE_HOST} 'command -v brew' &>/dev/null; then
+    if ! ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" 'command -v brew' &>/dev/null; then
         print_error "Homebrew not installed on remote Mac"
         echo "    Install Homebrew first:"
         echo "    ssh ${REMOTE_USER}@${REMOTE_HOST}"
@@ -58,13 +41,13 @@ check_prereqs() {
     print_success "Homebrew available"
 
     # Check if OrbStack is already installed
-    if ssh ${REMOTE_USER}@${REMOTE_HOST} 'command -v orb' &>/dev/null; then
+    if ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" 'command -v orb' &>/dev/null; then
         print_warning "OrbStack is already installed"
         echo ""
         echo "Current OrbStack status:"
-        ssh ${REMOTE_USER}@${REMOTE_HOST} 'orb status 2>/dev/null || echo "  (not running)"'
+        ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" 'orb status 2>/dev/null || echo "  (not running)"'
         echo ""
-        read -p "Reinstall/update OrbStack? (y/N) " -n 1 -r
+        read -rp "Reinstall/update OrbStack? (y/N) " -n 1 REPLY
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Exiting."
@@ -80,7 +63,7 @@ install_orbstack() {
     print_step "Installing OrbStack on remote Mac..."
     echo ""
 
-    ssh ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+    ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" << 'ENDSSH'
 echo "Installing OrbStack via Homebrew..."
 brew install --cask orbstack
 
@@ -110,7 +93,7 @@ ENDSSH
 start_orbstack() {
     print_step "Starting OrbStack..."
 
-    ssh ${REMOTE_USER}@${REMOTE_HOST} << 'ENDSSH'
+    ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" << 'ENDSSH'
 # Open OrbStack app
 open -a OrbStack 2>/dev/null || echo "Note: OrbStack may need manual first launch"
 
@@ -138,28 +121,36 @@ verify_installation() {
     print_step "Verifying installation..."
     echo ""
 
-    # Check OrbStack
-    echo "OrbStack status:"
-    ssh ${REMOTE_USER}@${REMOTE_HOST} 'orb status 2>/dev/null || echo "  Not running (may need manual start)"'
-    echo ""
+    # Batch verification in single SSH call
+    local verify_result
+    verify_result=$(ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" 'bash -s' 2>/dev/null <<'ENDSSH' || echo "SSH_FAILED"
+echo "=== OrbStack Status ==="
+orb status 2>/dev/null || echo "Not running (may need manual start)"
+echo ""
 
-    # Check Docker
-    echo "Docker status:"
-    DOCKER_VERSION=$(ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker version --format "{{.Server.Version}}" 2>/dev/null' || echo "not running")
-    if [ "$DOCKER_VERSION" != "not running" ]; then
-        print_success "Docker version: $DOCKER_VERSION"
+echo "=== Docker Version ==="
+DOCKER_VERSION=$(docker version --format "{{.Server.Version}}" 2>/dev/null || echo "not running")
+echo "VERSION=$DOCKER_VERSION"
+
+if [ "$DOCKER_VERSION" != "not running" ]; then
+    echo ""
+    echo "=== Docker Test ==="
+    docker run --rm hello-world 2>&1 | grep -c "Hello from Docker" || echo "0"
+fi
+ENDSSH
+)
+
+    echo "$verify_result"
+
+    # Extract docker version for status
+    local docker_version
+    docker_version=$(echo "$verify_result" | grep "^VERSION=" | cut -d= -f2)
+
+    echo ""
+    if [ "$docker_version" != "not running" ] && [ -n "$docker_version" ]; then
+        print_success "Docker version: $docker_version"
     else
         print_warning "Docker not responding (start OrbStack first)"
-    fi
-    echo ""
-
-    # Test docker run
-    echo "Testing Docker..."
-    TEST_RESULT=$(ssh ${REMOTE_USER}@${REMOTE_HOST} 'docker run --rm hello-world 2>&1 | grep -c "Hello from Docker"' 2>/dev/null || echo "0")
-    if [ "$TEST_RESULT" -gt 0 ]; then
-        print_success "Docker test container ran successfully"
-    else
-        print_warning "Could not run test container (OrbStack may still be starting)"
     fi
 }
 
@@ -193,6 +184,25 @@ show_summary() {
     echo ""
 }
 
+# Show help
+show_help() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Installs OrbStack (Docker manager) on remote Mac."
+    echo ""
+    echo "Options:"
+    echo "  --check-only    Only check current status, don't install"
+    echo "  --help, -h      Show this help message"
+    echo ""
+    echo "Required environment variables (set in .env):"
+    echo "  REMOTE_HOST     IP address of remote Mac"
+    echo "  REMOTE_USER     Username on remote Mac"
+    echo ""
+    echo "Note: OrbStack is OPTIONAL. The remote node works"
+    echo "without Docker for basic Clawdbot functionality."
+    exit 0
+}
+
 # Main execution
 main() {
     echo "This script will install OrbStack on the remote Mac."
@@ -201,7 +211,7 @@ main() {
     echo "Target: ${REMOTE_USER}@${REMOTE_HOST}"
     echo ""
 
-    read -p "Continue with installation? (y/N) " -n 1 -r
+    read -rp "Continue with installation? (y/N) " -n 1 REPLY
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         echo "Installation cancelled."
@@ -219,17 +229,7 @@ main() {
 # Handle arguments
 case "${1:-}" in
     --help|-h)
-        echo "Usage: $0 [--check-only]"
-        echo ""
-        echo "Installs OrbStack (Docker manager) on remote Mac."
-        echo ""
-        echo "Options:"
-        echo "  --check-only    Only check current status, don't install"
-        echo "  --help, -h      Show this help message"
-        echo ""
-        echo "Note: OrbStack is OPTIONAL. The remote node works"
-        echo "without Docker for basic Clawdbot functionality."
-        exit 0
+        show_help
         ;;
     --check-only)
         check_prereqs

@@ -4,48 +4,42 @@
 
 set -e
 
+# shellcheck source=lib/common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+
 echo "🔍 Clawdbot Connection Verification"
 echo "===================================="
 echo ""
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Load configuration
+load_env
 
-# Configuration
-MAIN_IP="192.168.1.230"
-REMOTE_IP="192.168.1.245"
-REMOTE_USER="tywhitaker"
-GATEWAY_PORT="18789"
+# Configuration from environment (no hardcoded values)
+: "${GATEWAY_IP:?Set GATEWAY_IP in .env or environment}"
+: "${REMOTE_HOST:?Set REMOTE_HOST in .env or environment}"
+: "${REMOTE_USER:?Set REMOTE_USER in .env or environment}"
+: "${GATEWAY_PORT:=18789}"
 
 # Counters
 PASS=0
 FAIL=0
 WARN=0
 
-# Test functions
+# Override test functions to use counters
 test_pass() {
     echo -e "  ${GREEN}✅ PASS${NC}: $1"
-    ((PASS++))
+    ((PASS++)) || true
 }
 
 test_fail() {
     echo -e "  ${RED}❌ FAIL${NC}: $1"
-    ((FAIL++))
+    ((FAIL++)) || true
 }
 
 test_warn() {
     echo -e "  ${YELLOW}⚠️  WARN${NC}: $1"
-    ((WARN++))
-}
-
-print_section() {
-    echo ""
-    echo -e "${CYAN}━━━ $1 ━━━${NC}"
+    ((WARN++)) || true
 }
 
 # Tests
@@ -66,14 +60,14 @@ test_local_gateway() {
     fi
 
     # Check port is listening
-    if lsof -i :${GATEWAY_PORT} > /dev/null 2>&1; then
+    if lsof -i :"${GATEWAY_PORT}" > /dev/null 2>&1; then
         test_pass "Port ${GATEWAY_PORT} is listening"
     else
         test_fail "Port ${GATEWAY_PORT} not listening"
     fi
 
     # Check health endpoint
-    if curl -s --connect-timeout 5 "http://localhost:${GATEWAY_PORT}/health" > /dev/null 2>&1; then
+    if curl -s --connect-timeout "$CURL_TIMEOUT" "http://localhost:${GATEWAY_PORT}/health" > /dev/null 2>&1; then
         test_pass "Health endpoint responding"
     else
         test_fail "Health endpoint not responding"
@@ -91,26 +85,27 @@ test_network_connectivity() {
     print_section "2. Network Connectivity"
 
     # Ping remote Mac
-    if ping -c 1 -W 2 ${REMOTE_IP} > /dev/null 2>&1; then
-        test_pass "Remote Mac pingable at ${REMOTE_IP}"
+    if ping -c 1 -W "$PING_TIMEOUT" "${REMOTE_HOST}" > /dev/null 2>&1; then
+        test_pass "Remote Mac pingable at ${REMOTE_HOST}"
     else
-        test_fail "Cannot ping remote Mac at ${REMOTE_IP}"
+        test_fail "Cannot ping remote Mac at ${REMOTE_HOST}"
         return
     fi
 
     # Check SSH port
-    if nc -z -w 2 ${REMOTE_IP} 22 2>/dev/null; then
+    if nc -z -w "$PING_TIMEOUT" "${REMOTE_HOST}" 22 2>/dev/null; then
         test_pass "SSH port 22 reachable"
     else
         test_fail "SSH port 22 not reachable"
     fi
 
     # Check gateway port from remote perspective
-    REMOTE_CAN_REACH=$(ssh -o ConnectTimeout=5 ${REMOTE_USER}@${REMOTE_IP} \
-        "curl -s --connect-timeout 3 http://${MAIN_IP}:${GATEWAY_PORT}/health > /dev/null 2>&1 && echo yes || echo no" 2>/dev/null)
+    local remote_can_reach
+    remote_can_reach=$(ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" \
+        "curl -s --connect-timeout 3 http://${GATEWAY_IP}:${GATEWAY_PORT}/health > /dev/null 2>&1 && echo yes || echo no" 2>/dev/null || echo "no")
 
-    if [ "$REMOTE_CAN_REACH" = "yes" ]; then
-        test_pass "Remote can reach gateway at ${MAIN_IP}:${GATEWAY_PORT}"
+    if [ "$remote_can_reach" = "yes" ]; then
+        test_pass "Remote can reach gateway at ${GATEWAY_IP}:${GATEWAY_PORT}"
     else
         test_fail "Remote cannot reach gateway"
     fi
@@ -120,11 +115,11 @@ test_ssh_connection() {
     print_section "3. SSH Connection"
 
     # Test passwordless SSH
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes ${REMOTE_USER}@${REMOTE_IP} "echo test" > /dev/null 2>&1; then
+    if ssh_check "${REMOTE_USER}@${REMOTE_HOST}"; then
         test_pass "Passwordless SSH working"
     else
         test_fail "Passwordless SSH not working"
-        echo "      Run: ssh-copy-id ${REMOTE_USER}@${REMOTE_IP}"
+        echo "      Run: ssh-copy-id ${REMOTE_USER}@${REMOTE_HOST}"
         return
     fi
 
@@ -138,86 +133,112 @@ test_ssh_connection() {
     fi
 
     # Check SSH config entry
-    if grep -q "${REMOTE_IP}" ~/.ssh/config 2>/dev/null; then
-        test_pass "SSH config entry exists for ${REMOTE_IP}"
+    if grep -q "${REMOTE_HOST}" ~/.ssh/config 2>/dev/null; then
+        test_pass "SSH config entry exists for ${REMOTE_HOST}"
     else
-        test_warn "No SSH config entry for ${REMOTE_IP}"
+        test_warn "No SSH config entry for ${REMOTE_HOST}"
     fi
 }
 
-test_remote_node() {
+# Batch remote checks into single SSH call for performance
+test_remote_node_and_config() {
     print_section "4. Remote Node"
 
-    # Check if clawdbot is installed
-    REMOTE_VERSION=$(ssh -o ConnectTimeout=5 ${REMOTE_USER}@${REMOTE_IP} \
-        'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && clawdbot --version' 2>/dev/null)
+    # Batch all remote checks in single SSH session
+    local remote_info
+    remote_info=$(ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" 'bash -s' 2>/dev/null <<'ENDSSH' || echo "SSH_FAILED"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-    if [ -n "$REMOTE_VERSION" ]; then
-        test_pass "Clawdbot installed: ${REMOTE_VERSION}"
+# Get version
+echo "VERSION=$(clawdbot --version 2>/dev/null || echo '')"
+
+# Get node status
+NODE_STATUS=$(clawdbot node status 2>&1 || echo "error")
+echo "NODE_STATUS=$NODE_STATUS"
+
+# Get config
+CONFIG=$(cat ~/.clawdbot/clawdbot.json 2>/dev/null || echo '{}')
+echo "CONFIG=$CONFIG"
+
+# Check LaunchAgent
+AGENT_EXISTS=$([ -f ~/Library/LaunchAgents/com.clawdbot.node.plist ] && echo yes || echo no)
+echo "AGENT_EXISTS=$AGENT_EXISTS"
+
+# Check LaunchAgent loaded
+AGENT_LOADED=$(launchctl list 2>/dev/null | grep -c clawdbot || echo "0")
+echo "AGENT_LOADED=$AGENT_LOADED"
+
+# Check startup script
+SCRIPT_EXISTS=$([ -x ~/.clawdbot/scripts/start-node.sh ] && echo yes || echo no)
+echo "SCRIPT_EXISTS=$SCRIPT_EXISTS"
+ENDSSH
+)
+
+    if [ "$remote_info" = "SSH_FAILED" ]; then
+        test_fail "Could not connect to remote"
+        return
+    fi
+
+    # Parse results
+    local version node_status config
+    version=$(echo "$remote_info" | grep "^VERSION=" | cut -d= -f2-)
+    node_status=$(echo "$remote_info" | grep "^NODE_STATUS=" | cut -d= -f2-)
+    config=$(echo "$remote_info" | grep "^CONFIG=" | cut -d= -f2-)
+
+    # Check version
+    if [ -n "$version" ]; then
+        test_pass "Clawdbot installed: ${version}"
     else
         test_fail "Clawdbot not found on remote"
         return
     fi
 
     # Check node status
-    NODE_STATUS=$(ssh ${REMOTE_USER}@${REMOTE_IP} \
-        'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && clawdbot node status 2>&1' 2>/dev/null || echo "error")
-
-    if echo "$NODE_STATUS" | grep -qi "connected\|running\|online"; then
+    if echo "$node_status" | grep -qi "connected\|running\|online"; then
         test_pass "Node status: Connected"
-        echo "      $NODE_STATUS" | head -3
-    elif echo "$NODE_STATUS" | grep -qi "disconnected\|stopped\|offline"; then
+        echo "      $node_status" | head -3
+    elif echo "$node_status" | grep -qi "disconnected\|stopped\|offline"; then
         test_fail "Node status: Disconnected"
-        echo "      $NODE_STATUS" | head -3
+        echo "      $node_status" | head -3
     else
         test_warn "Node status unclear"
-        echo "      $NODE_STATUS" | head -3
+        echo "      $node_status" | head -3
     fi
 
     # Check node configuration
-    REMOTE_CONFIG=$(ssh ${REMOTE_USER}@${REMOTE_IP} 'cat ~/.clawdbot/clawdbot.json 2>/dev/null' || echo "{}")
-
-    if echo "$REMOTE_CONFIG" | grep -q "ws://${MAIN_IP}:${GATEWAY_PORT}"; then
+    if echo "$config" | grep -q "ws://${GATEWAY_IP}:${GATEWAY_PORT}"; then
         test_pass "Node configured to connect to gateway"
-    elif echo "$REMOTE_CONFIG" | grep -q "ws://Mac.local:${GATEWAY_PORT}"; then
+    elif echo "$config" | grep -q "ws://.*:${GATEWAY_PORT}"; then
         test_pass "Node configured to connect to gateway (hostname)"
     else
         test_warn "Node configuration may be incorrect"
-        echo "      Expected: ws://${MAIN_IP}:${GATEWAY_PORT}"
+        echo "      Expected: ws://${GATEWAY_IP}:${GATEWAY_PORT}"
     fi
-}
 
-test_auto_restart() {
+    # Auto-restart checks
     print_section "5. Auto-restart Configuration"
 
-    # Check LaunchAgent exists
-    AGENT_EXISTS=$(ssh ${REMOTE_USER}@${REMOTE_IP} \
-        '[ -f ~/Library/LaunchAgents/com.clawdbot.node.plist ] && echo yes || echo no' 2>/dev/null)
+    local agent_exists agent_loaded script_exists
+    agent_exists=$(echo "$remote_info" | grep "^AGENT_EXISTS=" | cut -d= -f2)
+    agent_loaded=$(echo "$remote_info" | grep "^AGENT_LOADED=" | cut -d= -f2)
+    script_exists=$(echo "$remote_info" | grep "^SCRIPT_EXISTS=" | cut -d= -f2)
 
-    if [ "$AGENT_EXISTS" = "yes" ]; then
+    if [ "$agent_exists" = "yes" ]; then
         test_pass "LaunchAgent plist exists"
     else
         test_fail "LaunchAgent plist not found"
         echo "      Run: ./scripts/fix-auto-restart.sh"
-        return
     fi
 
-    # Check LaunchAgent is loaded
-    AGENT_LOADED=$(ssh ${REMOTE_USER}@${REMOTE_IP} \
-        'launchctl list 2>/dev/null | grep -c clawdbot' 2>/dev/null || echo "0")
-
-    if [ "$AGENT_LOADED" -gt 0 ]; then
+    if [ "$agent_loaded" -gt 0 ] 2>/dev/null; then
         test_pass "LaunchAgent is loaded"
     else
         test_fail "LaunchAgent not loaded"
         echo "      Run: launchctl load ~/Library/LaunchAgents/com.clawdbot.node.plist"
     fi
 
-    # Check startup script exists
-    SCRIPT_EXISTS=$(ssh ${REMOTE_USER}@${REMOTE_IP} \
-        '[ -x ~/.clawdbot/scripts/start-node.sh ] && echo yes || echo no' 2>/dev/null)
-
-    if [ "$SCRIPT_EXISTS" = "yes" ]; then
+    if [ "$script_exists" = "yes" ]; then
         test_pass "Startup script exists and is executable"
     else
         test_warn "Startup script missing or not executable"
@@ -228,10 +249,11 @@ test_optional_components() {
     print_section "6. Optional Components"
 
     # Check OrbStack/Docker on remote
-    DOCKER_INSTALLED=$(ssh ${REMOTE_USER}@${REMOTE_IP} \
-        'command -v docker > /dev/null 2>&1 && echo yes || echo no' 2>/dev/null)
+    local docker_installed
+    docker_installed=$(ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" \
+        'command -v docker > /dev/null 2>&1 && echo yes || echo no' 2>/dev/null || echo "no")
 
-    if [ "$DOCKER_INSTALLED" = "yes" ]; then
+    if [ "$docker_installed" = "yes" ]; then
         test_pass "Docker available on remote (optional)"
     else
         test_warn "Docker not installed on remote (optional)"
@@ -257,12 +279,12 @@ print_summary() {
     echo -e "  ${YELLOW}Warnings${NC}: $WARN"
     echo ""
 
-    if [ $FAIL -eq 0 ]; then
-        echo -e "${GREEN}✅ All critical tests passed!${NC}"
+    if [ "$FAIL" -eq 0 ]; then
+        print_success "All critical tests passed!"
         echo ""
         echo "Your distributed Clawdbot system is working correctly."
     else
-        echo -e "${RED}❌ Some tests failed.${NC}"
+        print_error "Some tests failed."
         echo ""
         echo "Please review the failures above and consult:"
         echo "  - docs/TROUBLESHOOTING.md"
@@ -285,17 +307,18 @@ quick_test() {
     fi
 
     # SSH
-    if ssh -o ConnectTimeout=3 -o BatchMode=yes ${REMOTE_USER}@${REMOTE_IP} "echo ok" > /dev/null 2>&1; then
+    if ssh_check "${REMOTE_USER}@${REMOTE_HOST}"; then
         echo -e "${GREEN}✅${NC} SSH: Connected"
     else
         echo -e "${RED}❌${NC} SSH: Cannot connect"
     fi
 
     # Remote node
-    NODE_OK=$(ssh -o ConnectTimeout=5 ${REMOTE_USER}@${REMOTE_IP} \
+    local node_ok
+    node_ok=$(ssh_cmd "${REMOTE_USER}@${REMOTE_HOST}" \
         'export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && clawdbot node status 2>&1 | grep -qi "connected\|running" && echo yes || echo no' 2>/dev/null || echo "no")
 
-    if [ "$NODE_OK" = "yes" ]; then
+    if [ "$node_ok" = "yes" ]; then
         echo -e "${GREEN}✅${NC} Remote Node: Connected"
     else
         echo -e "${RED}❌${NC} Remote Node: Not connected"
@@ -304,13 +327,33 @@ quick_test() {
     echo ""
 }
 
+# Show help
+show_help() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Verifies connectivity of Clawdbot distributed system."
+    echo ""
+    echo "Options:"
+    echo "  --quick, -q     Quick 3-point check (gateway, SSH, node)"
+    echo "  --help, -h      Show this help message"
+    echo ""
+    echo "Required environment variables (set in .env):"
+    echo "  GATEWAY_IP      IP address of gateway Mac"
+    echo "  REMOTE_HOST     IP address of remote Mac"
+    echo "  REMOTE_USER     Username on remote Mac"
+    echo ""
+    echo "Optional:"
+    echo "  GATEWAY_PORT    Gateway port (default: 18789)"
+    echo ""
+    exit 0
+}
+
 # Main execution
 main() {
     test_local_gateway
     test_network_connectivity
     test_ssh_connection
-    test_remote_node
-    test_auto_restart
+    test_remote_node_and_config
     test_optional_components
     print_summary
 }
@@ -321,19 +364,7 @@ case "${1:-}" in
         quick_test
         ;;
     --help|-h)
-        echo "Usage: $0 [--quick|-q]"
-        echo ""
-        echo "Verifies connectivity of Clawdbot distributed system."
-        echo ""
-        echo "Options:"
-        echo "  --quick, -q     Quick 3-point check (gateway, SSH, node)"
-        echo "  --help, -h      Show this help message"
-        echo ""
-        echo "Configuration:"
-        echo "  Main Mac:    ${MAIN_IP}"
-        echo "  Remote Mac:  ${REMOTE_USER}@${REMOTE_IP}"
-        echo "  Gateway:     port ${GATEWAY_PORT}"
-        exit 0
+        show_help
         ;;
     *)
         main
