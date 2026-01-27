@@ -78,33 +78,31 @@ log_header() {
 # Pre-flight Checks
 #------------------------------------------------------------------------------
 
-# Detect Docker command (handle 1Password shell integration)
+# Detect and cache Docker command path (handles 1Password shell integration)
+# This is called once at startup to avoid repeated detection overhead
+_DOCKER_CMD=""
 detect_docker_cmd() {
-    # Check if 1Password shell integration is wrapping docker
-    if [[ "${SHELL:-}" == *"zsh"* ]] && type _op_inject_secrets &>/dev/null 2>&1; then
-        # Use direct path to avoid wrapper issues
-        if [[ -x "/usr/local/bin/docker" ]]; then
-            DOCKER_CMD="/usr/local/bin/docker"
-        elif [[ -x "/opt/homebrew/bin/docker" ]]; then
-            DOCKER_CMD="/opt/homebrew/bin/docker"
-        else
-            DOCKER_CMD="docker"
-        fi
+    # Return cached value if already detected
+    [[ -n "$_DOCKER_CMD" ]] && return 0
+
+    # 1Password shell integration can wrap docker; use direct path to avoid issues
+    if [[ -x "/opt/homebrew/bin/docker" ]]; then
+        _DOCKER_CMD="/opt/homebrew/bin/docker"
+    elif [[ -x "/usr/local/bin/docker" ]]; then
+        _DOCKER_CMD="/usr/local/bin/docker"
     else
-        DOCKER_CMD="docker"
+        _DOCKER_CMD="docker"
     fi
-    export DOCKER_CMD
+    export _DOCKER_CMD
 }
 
-# Run docker mcp commands via bash to avoid zsh integration issues
+# Run docker mcp commands (uses cached docker path)
 docker_mcp() {
-    detect_docker_cmd
-    if [[ "$DOCKER_CMD" == "docker" ]]; then
-        command docker mcp "$@" 2>&1
-    else
-        "$DOCKER_CMD" mcp "$@" 2>&1
-    fi
+    "$_DOCKER_CMD" mcp "$@" 2>&1
 }
+
+# Initialize docker command detection at script startup
+detect_docker_cmd
 
 check_dependencies() {
     log_header "Pre-flight Checks"
@@ -126,17 +124,16 @@ check_dependencies() {
         failed=1
     fi
 
-    # Check Docker
-    detect_docker_cmd
-    if command -v "$DOCKER_CMD" &>/dev/null; then
-        log_success "Docker installed ($($DOCKER_CMD --version 2>/dev/null | head -1))"
+    # Check Docker (uses cached _DOCKER_CMD)
+    if command -v "$_DOCKER_CMD" &>/dev/null; then
+        log_success "Docker installed ($($_DOCKER_CMD --version 2>/dev/null | head -1))"
     else
         log_error "Docker not found"
         failed=1
     fi
 
     # Check Docker Desktop running
-    if $DOCKER_CMD info &>/dev/null 2>&1; then
+    if $_DOCKER_CMD info &>/dev/null 2>&1; then
         log_success "Docker Desktop running"
     else
         log_error "Docker Desktop not running. Please start Docker Desktop"
@@ -170,7 +167,7 @@ validate_dockerhub() {
 
     log_info "Validating DockerHub credentials..."
 
-    if echo "$pat" | $DOCKER_CMD login -u "$username" --password-stdin &>/dev/null 2>&1; then
+    if echo "$pat" | $_DOCKER_CMD login -u "$username" --password-stdin &>/dev/null 2>&1; then
         log_success "DockerHub credentials valid"
         return 0
     else

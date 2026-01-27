@@ -13,6 +13,10 @@ RUN apt-get update && \
     python3 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
+    # WORKAROUND: Create a fake 'brew' command that reports a version.
+    # Some npm packages (e.g., node-gyp) check for Homebrew on macOS and fail
+    # if the check errors out. This shim prevents those false-positive failures
+    # in containerized builds where Homebrew isn't available or needed.
     echo '#!/bin/sh\necho "Homebrew 4.2.0-docker-shim"' > /usr/local/bin/brew && \
     chmod +x /usr/local/bin/brew
 

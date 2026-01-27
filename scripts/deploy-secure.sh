@@ -132,9 +132,10 @@ EOF
 # Build images
 build_images() {
     print_header "Building Secure Clawdbot Images"
-    
+
+    # Use cache for faster iterative builds; pass --no-cache manually if needed
     print_info "Building with security hardening..."
-    if docker compose --env-file .env -f config/docker-compose.secure.yml build --no-cache; then
+    if docker compose --env-file .env -f config/docker-compose.secure.yml build; then
         print_success "Images built successfully"
     else
         print_error "Image build failed"
@@ -184,9 +185,11 @@ setup_auth() {
             # SECURITY: Pass token via environment variable instead of temp file
             # This avoids writing secrets to disk
             print_info "Running onboarding with setup-token..."
-            docker compose --env-file .env -f config/docker-compose.secure.yml run --rm \
+            if ! docker compose --env-file .env -f config/docker-compose.secure.yml run --rm \
                 -e CLAWDBOT_SETUP_TOKEN="$SETUP_TOKEN" \
-                clawdbot-cli sh -c 'clawdbot onboard --non-interactive || clawdbot setup' || true
+                clawdbot-cli sh -c 'clawdbot onboard --non-interactive || clawdbot setup'; then
+                print_warning "Onboarding returned non-zero exit code (may be normal for first run)"
+            fi
 
             # Clear the variable from memory
             unset SETUP_TOKEN
@@ -227,9 +230,11 @@ setup_auth() {
 
         # SECURITY: Pass API key via --env-file to avoid exposure in process list
         print_info "Running onboarding with API key..."
-        docker compose --env-file .env -f config/docker-compose.secure.yml run --rm \
+        if ! docker compose --env-file .env -f config/docker-compose.secure.yml run --rm \
             --env-file .env \
-            clawdbot-cli sh -c 'clawdbot onboard --non-interactive || clawdbot setup' || true
+            clawdbot-cli sh -c 'clawdbot onboard --non-interactive || clawdbot setup'; then
+            print_warning "Onboarding returned non-zero exit code (may be normal for first run)"
+        fi
 
         # Clear the variable from memory
         unset API_KEY
@@ -255,23 +260,36 @@ start_gateway() {
     fi
 }
 
-# Wait for health check
+# Wait for health check with exponential backoff
 wait_for_health() {
     print_header "Waiting for Gateway Health Check"
-    
-    print_info "Waiting up to 60 seconds for gateway to become healthy..."
-    
-    for i in {1..12}; do
-        sleep 5
+
+    print_info "Waiting for gateway to become healthy (exponential backoff)..."
+
+    local delay=2
+    local max_delay=15
+    local total_wait=0
+    local max_wait=90
+    local attempt=1
+
+    while [ $total_wait -lt $max_wait ]; do
+        sleep "$delay"
+        total_wait=$((total_wait + delay))
+
         STATUS=$(docker inspect clawdbot-gateway-secure --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
-        echo "  Attempt $i/12: $STATUS"
-        
+        echo "  Attempt $attempt (${total_wait}s): $STATUS"
+
         if [ "$STATUS" = "healthy" ]; then
             print_success "Gateway is healthy"
             return 0
         fi
+
+        # Exponential backoff: 2s -> 4s -> 8s -> 15s (capped)
+        delay=$((delay * 2))
+        [ $delay -gt $max_delay ] && delay=$max_delay
+        attempt=$((attempt + 1))
     done
-    
+
     print_warning "Health check timeout (gateway may still be starting)"
     print_info "Check status with: docker compose --env-file .env -f config/docker-compose.secure.yml ps"
 }
@@ -279,7 +297,7 @@ wait_for_health() {
 # Final verification
 verify_deployment() {
     print_header "Verifying Deployment"
-    
+
     # Check container is running
     if docker compose --env-file .env -f config/docker-compose.secure.yml ps | grep -q "clawdbot-gateway.*Up"; then
         print_success "Gateway container running"
@@ -287,26 +305,34 @@ verify_deployment() {
         print_error "Gateway container not running"
         return 1
     fi
-    
-    # Check port is listening
-    if netstat -an 2>/dev/null | grep "127.0.0.1.18789" | grep -q "LISTEN" || \
-       lsof -i :18789 2>/dev/null | grep -q LISTEN; then
+
+    # Cross-platform port check (works on macOS and Linux)
+    if command -v lsof &>/dev/null && lsof -i :18789 -sTCP:LISTEN &>/dev/null; then
+        print_success "Gateway listening on localhost:18789"
+    elif command -v ss &>/dev/null && ss -tln | grep -q ":18789 "; then
         print_success "Gateway listening on localhost:18789"
     else
-        print_warning "Port check inconclusive"
+        print_warning "Port check inconclusive (install lsof or ss for verification)"
     fi
-    
-    # Check security settings
+
+    # Check security settings in single docker inspect call for performance
     print_info "Verifying security settings..."
-    
-    RO_FS=$(docker inspect clawdbot-gateway-secure | jq -r '.[0].HostConfig.ReadonlyRootfs')
+
+    INSPECT_DATA=$(docker inspect clawdbot-gateway-secure 2>/dev/null)
+    if [ -z "$INSPECT_DATA" ]; then
+        print_warning "Could not inspect container"
+        return 1
+    fi
+
+    RO_FS=$(echo "$INSPECT_DATA" | jq -r '.[0].HostConfig.ReadonlyRootfs')
+    USER_ID=$(echo "$INSPECT_DATA" | jq -r '.[0].Config.User')
+
     if [ "$RO_FS" = "true" ]; then
         print_success "Read-only filesystem active"
     else
         print_warning "Read-only filesystem not active"
     fi
-    
-    USER_ID=$(docker inspect clawdbot-gateway-secure | jq -r '.[0].Config.User')
+
     if [ "$USER_ID" != "0:0" ] && [ "$USER_ID" != "" ]; then
         print_success "Running as non-root user ($USER_ID)"
     else

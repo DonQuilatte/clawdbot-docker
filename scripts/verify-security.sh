@@ -3,7 +3,9 @@
 # Security Verification Script for Clawdbot
 # Verifies all security settings after deployment
 
-# Don't exit on errors - we track pass/fail manually
+# NOTE: We use set +e (don't exit on errors) because this script runs multiple
+# verification checks and tracks pass/fail counts manually. Individual check
+# failures should not abort the entire verification process.
 set +e
 
 # Colors for output
@@ -107,14 +109,30 @@ else
     check_warn "Could not verify network binding"
 fi
 
-# 7. Check sandbox mode
+# 7-11. Check application security settings (batched in single container for performance)
 print_header "Application Security Settings"
-SANDBOX_CHECK=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.sandbox.enabled 2>/dev/null || echo "false")
+
+# Batch all config checks in a single container run to avoid spawning multiple containers
+APP_CONFIG=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli sh -c '
+echo "SANDBOX_ENABLED=$(clawdbot config get gateway.sandbox.enabled 2>/dev/null || echo false)"
+echo "SANDBOX_MODE=$(clawdbot config get gateway.sandbox.mode 2>/dev/null || echo unknown)"
+echo "TOOL_POLICY=$(clawdbot config get gateway.tools.policy 2>/dev/null || echo unknown)"
+echo "AUDIT_ENABLED=$(clawdbot config get gateway.audit.enabled 2>/dev/null || echo false)"
+echo "INJECTION_ENABLED=$(clawdbot config get gateway.security.promptInjection.enabled 2>/dev/null || echo false)"
+echo "RATE_LIMIT_ENABLED=$(clawdbot config get gateway.security.rateLimit.enabled 2>/dev/null || echo false)"
+' 2>/dev/null || echo "SANDBOX_ENABLED=false")
+
+# Parse results
+SANDBOX_CHECK=$(echo "$APP_CONFIG" | grep "SANDBOX_ENABLED=" | cut -d= -f2)
+SANDBOX_MODE=$(echo "$APP_CONFIG" | grep "SANDBOX_MODE=" | cut -d= -f2)
+TOOL_POLICY=$(echo "$APP_CONFIG" | grep "TOOL_POLICY=" | cut -d= -f2)
+AUDIT_CHECK=$(echo "$APP_CONFIG" | grep "AUDIT_ENABLED=" | cut -d= -f2)
+INJECTION_CHECK=$(echo "$APP_CONFIG" | grep "INJECTION_ENABLED=" | cut -d= -f2)
+RATE_CHECK=$(echo "$APP_CONFIG" | grep "RATE_LIMIT_ENABLED=" | cut -d= -f2)
+
+# 7. Check sandbox mode
 if echo "$SANDBOX_CHECK" | grep -q "true"; then
     check_pass "Sandbox enabled"
-    
-    # Check sandbox mode
-    SANDBOX_MODE=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.sandbox.mode 2>/dev/null || echo "")
     if echo "$SANDBOX_MODE" | grep -q "strict"; then
         check_pass "Sandbox mode: strict"
     else
@@ -125,7 +143,6 @@ else
 fi
 
 # 8. Check tool policy
-TOOL_POLICY=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.tools.policy 2>/dev/null || echo "")
 if echo "$TOOL_POLICY" | grep -q "restrictive"; then
     check_pass "Tool policy: restrictive"
 else
@@ -133,7 +150,6 @@ else
 fi
 
 # 9. Check audit logging
-AUDIT_CHECK=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.audit.enabled 2>/dev/null || echo "false")
 if echo "$AUDIT_CHECK" | grep -q "true"; then
     check_pass "Audit logging enabled"
 else
@@ -141,7 +157,6 @@ else
 fi
 
 # 10. Check prompt injection protection
-INJECTION_CHECK=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.security.promptInjection.enabled 2>/dev/null || echo "false")
 if echo "$INJECTION_CHECK" | grep -q "true"; then
     check_pass "Prompt injection protection enabled"
 else
@@ -149,7 +164,6 @@ else
 fi
 
 # 11. Check rate limiting
-RATE_CHECK=$(docker compose --env-file .env -f config/docker-compose.secure.yml run --rm clawdbot-cli config get gateway.security.rateLimit.enabled 2>/dev/null || echo "false")
 if echo "$RATE_CHECK" | grep -q "true"; then
     check_pass "Rate limiting enabled"
 else

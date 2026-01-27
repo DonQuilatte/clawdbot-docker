@@ -51,7 +51,11 @@ services:
     # SECURITY: Prevent privilege escalation
     security_opt:
       - no-new-privileges:true
-      # - seccomp=seccomp-profile.json  # Disabled: incompatible with macOS Docker Desktop
+      # NOTE: Custom seccomp profile disabled for macOS Docker Desktop compatibility.
+      # macOS Docker runs containers in a Linux VM where custom seccomp profiles
+      # cause "operation not permitted" errors. The default Docker seccomp profile
+      # still provides syscall filtering. Enable on Linux hosts for stricter security:
+      # - seccomp=seccomp-profile.json
 
     # SECURITY: Run as non-root user (matching host UID for volume permissions)
     user: "${USER_UID:-501}:${USER_GID:-20}"
@@ -78,7 +82,7 @@ services:
     # SECURITY: Health check
     healthcheck:
       test:
-        ["CMD", "sh", "-c", "curl -f http://localhost:18789/health || exit 0"]
+        ["CMD", "sh", "-c", "curl -f http://localhost:18789/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -137,7 +141,7 @@ services:
     privileged: false
     security_opt:
       - no-new-privileges:true
-      # - seccomp=seccomp-profile.json  # Disabled: incompatible with macOS Docker Desktop
+      # NOTE: Custom seccomp disabled for macOS compatibility (see gateway service comment)
 
     # SECURITY: Run as non-root
     user: "1000:1000"

@@ -64,9 +64,11 @@ if [ -n "$PENDING_IDS" ]; then
     if [[ "$APPROVE" =~ ^[Yy]$ ]]; then
         for ID in $PENDING_IDS; do
             echo "   Approving $ID..."
-            docker exec "$CONTAINER_NAME" clawdbot devices approve "$ID" 2>&1 || true
+            if ! docker exec "$CONTAINER_NAME" clawdbot devices approve "$ID" 2>&1; then
+                echo "   ⚠️  Warning: Failed to approve device $ID (may already be approved)"
+            fi
         done
-        echo "✅ Devices approved"
+        echo "✅ Device approval complete"
     else
         echo "ℹ️  To approve manually:"
         echo "   docker exec $CONTAINER_NAME clawdbot devices approve <request-id>"
