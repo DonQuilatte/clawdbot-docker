@@ -358,6 +358,68 @@ brew install tailscale && sudo tailscale up
 
 ---
 
+## Firewall Configuration
+
+### Enabling Firewall on Remote Mac
+
+The macOS firewall can be enabled without breaking Clawdbot connectivity. The Clawdbot node makes **outbound** WebSocket connections to the gateway, which are allowed by default. However, Node.js must be explicitly added to the firewall's allowed applications.
+
+**Step 1: Enable Firewall**
+```bash
+# On TW (via System Settings or command line)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate on
+```
+
+**Step 2: Add Node.js to Allowed Apps**
+```bash
+# On TW - add your Node.js binary (adjust path for your nvm version)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add ~/.nvm/versions/node/v24.13.0/bin/node
+```
+
+**Step 3: Restart Clawdbot Node**
+```bash
+clawdbot node restart
+```
+
+**Step 4: Verify Connection**
+```bash
+# Check node status
+clawdbot node status
+
+# Or from main Mac
+ssh tywhitaker@192.168.1.245 'clawdbot node status'
+```
+
+### Firewall Verification Commands
+
+```bash
+# Check firewall state
+/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate
+
+# List allowed apps
+/usr/libexec/ApplicationFirewall/socketfilterfw --listapps
+
+# Check if specific app is blocked
+/usr/libexec/ApplicationFirewall/socketfilterfw --getappblocked /path/to/app
+```
+
+### After Node.js Updates
+
+When you update Node.js via nvm, you may need to re-add the new version to the firewall:
+
+```bash
+# Get current node path
+which node
+
+# Add to firewall
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add $(which node)
+
+# Restart Clawdbot
+clawdbot node restart
+```
+
+---
+
 ## Troubleshooting
 
 ### Can't connect from internet

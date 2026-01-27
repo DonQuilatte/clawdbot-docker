@@ -29,8 +29,8 @@ This document tracks the current working configuration of the Clawdbot distribut
 │  │                             │    │                         │ │
 │  │  Services:                  │    │  Status:                │ │
 │  │  ✅ Gateway Running         │    │  ✅ Connected to Gateway│ │
-│  │  ✅ Dashboard Active        │    │  ⚠️ No Auto-restart     │ │
-│  │  ✅ OrbStack + Docker       │    │  ❌ No OrbStack         │ │
+│  │  ✅ Dashboard Active        │    │  ✅ Auto-restart Active │ │
+│  │  ✅ OrbStack + Docker       │    │  ✅ Firewall Enabled    │ │
 │  │  ✅ Claude Code 2.1.20      │    │  ✅ Claude Code 2.1.20  │ │
 │  │                             │    │                         │ │
 │  └─────────────────────────────┘    └─────────────────────────┘ │
@@ -70,7 +70,8 @@ This document tracks the current working configuration of the Clawdbot distribut
 | **OrbStack** | N/A | ❌ Not Installed | Optional |
 | **Docker** | N/A | ❌ Not Installed | Optional |
 | **SSH Server** | Built-in | ✅ | Remote Login enabled |
-| **Auto-restart** | LaunchAgent | ⚠️ Not Configured | **Priority fix needed** |
+| **Firewall** | Built-in | ✅ Enabled | Node.js allowed |
+| **Auto-restart** | LaunchAgent | ✅ Configured | Auto-starts on boot |
 
 **User Details:**
 - Username: `tywhitaker`
@@ -217,16 +218,6 @@ ssh tywhitaker@192.168.1.245 'curl -s -o /dev/null -w "%{http_code}" http://192.
 
 ## Known Issues
 
-### Critical: Auto-restart Not Configured
-
-**Impact:** Remote node will not automatically start after system reboot.
-
-**Symptoms:**
-- After remote Mac restarts, node shows disconnected
-- Must manually SSH and start node
-
-**Resolution:** See [AUTO_RESTART_FIX.md](AUTO_RESTART_FIX.md)
-
 ### Minor: OrbStack Not on Remote
 
 **Impact:** Cannot run Docker containers on remote Mac.
@@ -295,8 +286,34 @@ ssh tywhitaker@192.168.1.245 'clawdbot node logs'
 | 2026-01-27 | Initial distributed setup | ✅ Working |
 | 2026-01-27 | SSH passwordless auth | ✅ Configured |
 | 2026-01-27 | Remote node connected | ✅ Working |
-| Pending | Auto-restart configuration | ⚠️ TODO |
+| 2026-01-27 | Auto-restart configuration | ✅ Configured |
+| 2026-01-27 | Firewall enabled on TW | ✅ Working |
 | Pending | OrbStack on remote | ❓ Optional |
+
+---
+
+## Firewall Configuration
+
+### Remote Mac (TW) Firewall
+
+The macOS firewall is enabled on TW with Node.js allowed for outbound connections.
+
+**Current Configuration:**
+```bash
+# Check firewall status
+ssh tywhitaker@192.168.1.245 '/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate'
+# Returns: Firewall is enabled. (State = 1)
+
+# Verify Node.js is allowed
+ssh tywhitaker@192.168.1.245 '/usr/libexec/ApplicationFirewall/socketfilterfw --listapps | grep node'
+# Returns: /Users/tywhitaker/.nvm/versions/node/v24.13.0/bin/node
+```
+
+**If Node.js needs to be re-added after nvm update:**
+```bash
+# On TW (requires sudo)
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add ~/.nvm/versions/node/$(node -v)/bin/node
+```
 
 ---
 
@@ -310,4 +327,4 @@ ssh tywhitaker@192.168.1.245 'clawdbot node logs'
 ---
 
 **Last Updated:** 2026-01-27
-**Status:** ✅ Distributed System Operational | ⚠️ Auto-restart Pending
+**Status:** ✅ Distributed System Operational | ✅ Firewall Enabled | ✅ Auto-restart Active

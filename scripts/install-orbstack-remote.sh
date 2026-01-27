@@ -27,14 +27,22 @@ git config --global user.email "${GIT_EMAIL}"
 echo "   ✅ Git Configured: \$(git config --global user.name) <\$(git config --global user.email)>"
 
 # 3. Install OrbStack (Docker)
+echo "🔹 [Remote] Installing OrbStack..."
 if ! command -v orbstack &>/dev/null; then
-    echo "🔹 [Remote] Installing OrbStack..."
+    # Disable exit-on-error for this step in case sudo is needed
+    set +e 
     brew install orbstack
-    echo "   ✅ OrbStack Installed. Starting..."
-    # Note: 'orbstack start' might require GUI session or specific permissions
-    # We attempt it, but don't fail if it needs manual first-run
-    orbstack start || echo "   ⚠️ OrbStack start require manual intervention on first run"
-    orbstack config set autostart true || true
+    INSTALL_EXIT_CODE=$?
+    set -e
+    
+    if [ $INSTALL_EXIT_CODE -eq 0 ]; then
+        echo "   ✅ OrbStack Installed. Starting..."
+        orbstack start || echo "   ⚠️ OrbStack start require manual intervention on first run"
+        orbstack config set autostart true || true
+    else
+        echo "   ⚠️ OrbStack install failed (likely needs sudo password)."
+        echo "      You may need to run 'brew install orbstack' manually in a terminal."
+    fi
 else
     echo "   ✅ OrbStack already installed status: \$(orbstack status 2>/dev/null || echo 'Unknown')"
 fi
