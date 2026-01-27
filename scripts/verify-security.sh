@@ -8,37 +8,38 @@
 # failures should not abort the entire verification process.
 set +e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# shellcheck source=lib/common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/lib/common.sh" ]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+else
+    # Fallback colors if common.sh not found
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+fi
 
 # Counters
 CHECKS_PASSED=0
 CHECKS_FAILED=0
 CHECKS_WARNING=0
 
-print_header() {
-    echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  $1${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-}
-
+# Override/extend with check-specific functions
 check_pass() {
     echo -e "${GREEN}✅ $1${NC}"
-    ((CHECKS_PASSED++))
+    ((CHECKS_PASSED++)) || true
 }
 
 check_fail() {
     echo -e "${RED}❌ $1${NC}"
-    ((CHECKS_FAILED++))
+    ((CHECKS_FAILED++)) || true
 }
 
 check_warn() {
     echo -e "${YELLOW}⚠️  $1${NC}"
-    ((CHECKS_WARNING++))
+    ((CHECKS_WARNING++)) || true
 }
 
 print_header "Clawdbot Security Configuration Verification"
@@ -71,31 +72,37 @@ else
     check_fail "Root filesystem is writable (SECURITY RISK)"
 fi
 
-# 3. Check capabilities
-print_header "Linux Capabilities"
-CAP_CHECK=$(docker inspect clawdbot-gateway-secure 2>/dev/null | grep -A 5 "CapDrop" || echo "")
-if echo "$CAP_CHECK" | grep -q "ALL"; then
-    check_pass "All capabilities dropped"
-else
-    check_warn "Not all capabilities dropped"
-fi
+# 3-5. Check container security settings (batched single docker inspect for performance)
+print_header "Container Security Settings"
 
-# 4. Check no-new-privileges
-print_header "Privilege Escalation Protection"
-PRIV_CHECK=$(docker inspect clawdbot-gateway-secure 2>/dev/null | grep "no-new-privileges" || echo "")
-if echo "$PRIV_CHECK" | grep -q "no-new-privileges:true"; then
-    check_pass "No new privileges flag set"
-else
-    check_fail "No new privileges not set (SECURITY RISK)"
-fi
+# Single docker inspect call, parse with jq for all security checks
+CONTAINER_INSPECT=$(docker inspect clawdbot-gateway-secure 2>/dev/null || echo "[]")
 
-# 5. Check seccomp profile
-print_header "Seccomp Profile"
-SECCOMP_CHECK=$(docker inspect clawdbot-gateway-secure 2>/dev/null | grep -i "seccomp" || echo "")
-if echo "$SECCOMP_CHECK" | grep -q "seccomp"; then
-    check_pass "Custom seccomp profile active"
+if [ "$CONTAINER_INSPECT" = "[]" ]; then
+    check_warn "Could not inspect container"
 else
-    check_warn "Using default seccomp profile"
+    # Check capabilities dropped
+    CAP_DROP=$(jq -r '.[0].HostConfig.CapDrop // [] | join(",")' <<< "$CONTAINER_INSPECT")
+    if echo "$CAP_DROP" | grep -q "ALL"; then
+        check_pass "All capabilities dropped"
+    else
+        check_warn "Not all capabilities dropped"
+    fi
+
+    # Check no-new-privileges
+    NO_NEW_PRIV=$(jq -r '.[0].HostConfig.SecurityOpt // [] | join(",")' <<< "$CONTAINER_INSPECT")
+    if echo "$NO_NEW_PRIV" | grep -q "no-new-privileges:true"; then
+        check_pass "No new privileges flag set"
+    else
+        check_fail "No new privileges not set (SECURITY RISK)"
+    fi
+
+    # Check seccomp profile
+    if echo "$NO_NEW_PRIV" | grep -qi "seccomp"; then
+        check_pass "Custom seccomp profile active"
+    else
+        check_warn "Using default seccomp profile"
+    fi
 fi
 
 # 6. Check network binding
@@ -170,19 +177,30 @@ else
     check_warn "Rate limiting disabled"
 fi
 
-# 12. Check resource limits
+# 12. Check resource limits (reuse cached inspect data if available, else fetch)
 print_header "Resource Limits"
-LIMITS_CHECK=$(docker inspect clawdbot-gateway-secure 2>/dev/null | grep -A 10 "NanoCpus\|Memory" || echo "")
-if echo "$LIMITS_CHECK" | grep -q "NanoCpus"; then
-    check_pass "CPU limits configured"
-else
-    check_warn "No CPU limits set"
+
+if [ -z "${CONTAINER_INSPECT:-}" ] || [ "$CONTAINER_INSPECT" = "[]" ]; then
+    CONTAINER_INSPECT=$(docker inspect clawdbot-gateway-secure 2>/dev/null || echo "[]")
 fi
 
-if echo "$LIMITS_CHECK" | grep -q "Memory"; then
-    check_pass "Memory limits configured"
+if [ "$CONTAINER_INSPECT" != "[]" ]; then
+    CPU_LIMIT=$(jq -r '.[0].HostConfig.NanoCpus // 0' <<< "$CONTAINER_INSPECT")
+    MEM_LIMIT=$(jq -r '.[0].HostConfig.Memory // 0' <<< "$CONTAINER_INSPECT")
+
+    if [ "$CPU_LIMIT" -gt 0 ] 2>/dev/null; then
+        check_pass "CPU limits configured"
+    else
+        check_warn "No CPU limits set"
+    fi
+
+    if [ "$MEM_LIMIT" -gt 0 ] 2>/dev/null; then
+        check_pass "Memory limits configured"
+    else
+        check_warn "No memory limits set"
+    fi
 else
-    check_warn "No memory limits set"
+    check_warn "Could not verify resource limits"
 fi
 
 # Summary

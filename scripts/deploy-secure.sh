@@ -2,33 +2,22 @@
 set -euo pipefail
 
 # Clawdbot Secure Docker Deployment Script
-# Version: 1.1.0
+# Version: 1.2.0
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# shellcheck source=lib/common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/lib/common.sh" ]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+else
+    # Fallback if common.sh not found
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+fi
 
-print_header() {
-    echo -e "\n${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BLUE}  $1${NC}"
-    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-}
-
-print_success() {
-    echo -e "${GREEN}✅ ${NC}$1"
-}
-
-print_error() {
-    echo -e "${RED}❌ ${NC}$1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠️  ${NC}$1"
-}
-
+# Script-specific functions (extend common.sh)
 print_info() {
     echo -e "${BLUE}ℹ ${NC}$1"
 }
@@ -324,8 +313,9 @@ verify_deployment() {
         return 1
     fi
 
-    RO_FS=$(echo "$INSPECT_DATA" | jq -r '.[0].HostConfig.ReadonlyRootfs')
-    USER_ID=$(echo "$INSPECT_DATA" | jq -r '.[0].Config.User')
+    # Use here-strings to avoid subshell overhead from echo | jq
+    RO_FS=$(jq -r '.[0].HostConfig.ReadonlyRootfs' <<< "$INSPECT_DATA")
+    USER_ID=$(jq -r '.[0].Config.User' <<< "$INSPECT_DATA")
 
     if [ "$RO_FS" = "true" ]; then
         print_success "Read-only filesystem active"

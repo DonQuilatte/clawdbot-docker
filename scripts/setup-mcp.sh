@@ -182,7 +182,8 @@ validate_exa() {
     log_info "Validating Exa API key..."
 
     local response
-    response=$(curl -s -X POST "https://api.exa.ai/search" \
+    # OPTIMIZATION: Add timeout to prevent indefinite hangs
+    response=$(curl -s --connect-timeout 10 --max-time 30 -X POST "https://api.exa.ai/search" \
         -H "x-api-key: $api_key" \
         -H "Content-Type: application/json" \
         -d '{"query": "test", "numResults": 1}' 2>/dev/null)
