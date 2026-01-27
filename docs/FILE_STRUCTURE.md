@@ -2,236 +2,128 @@
 
 Overview of all files in this repository and their purposes.
 
-## 📄 Core Files
-
-### `README.md`
-
-Main entry point with quick start guide and links to detailed documentation.
-
-### `docker-compose.yml`
-
-Docker Compose configuration defining the gateway and CLI services, networking, volumes, and resource limits.
-
-### `docker-setup.sh` (executable)
-
-Automated setup script that:
-
-- Checks prerequisites (Docker, Node.js, etc.)
-- Creates data directory structure
-- Generates default configuration
-- Pulls Docker images
-- Displays next steps
-
-### `.env.example`
-
-Template for environment variables. Copy to `.env` and customize:
-
-- `CLAWDBOT_HOME_VOLUME` - Data storage path
-- `CLAWDBOT_GATEWAY_PORT` - API port (default: 3000)
-- `CLAWDBOT_LOG_LEVEL` - Logging verbosity
-- `CLAWDBOT_GATEWAY_BIND` - Network binding
-
-### `.gitignore`
-
-Git ignore rules for:
-
-- Environment files (`.env`)
-- Data directories
-- macOS system files
-- Node modules
-- Backup files
-
-## 📚 Documentation
-
-### `QUICK_REFERENCE.md`
-
-Essential commands organized by category:
-
-- Gateway control (start/stop/restart)
-- Configuration management
-- Authentication
-- Health checks & diagnostics
-- Security commands
-- Maintenance & debugging
-
-### `SECURITY.md`
-
-Comprehensive security guide covering:
-
-- Security principles
-- Sandbox configuration (strict/moderate/permissive)
-- Network security (localhost binding, CORS, rate limiting)
-- Authentication & token management
-- Audit logging
-- Tool restrictions
-- Prompt injection protection
-- Security checklist
-- Incident response procedures
-
-### `TROUBLESHOOTING.md`
-
-Solutions for common issues:
-
-- Installation problems
-- Authentication failures
-- Gateway issues
-- Network connectivity
-- Performance problems
-- Data & storage issues
-- Diagnostic tools
-- Full reset procedures
-
-### `DOCKER_GUIDE.md`
-
-Detailed Docker configuration reference:
-
-- Architecture overview
-- Docker Compose configuration
-- Environment variables
-- Volume management
-- Networking
-- Resource limits
-- Health checks
-- Customization options
-- Best practices
-
-### `FILE_STRUCTURE.md` (this file)
-
-Overview of repository structure and file purposes.
-
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 clawdbot/
-├── README.md                    # Main documentation
-├── QUICK_REFERENCE.md          # Command cheat sheet
-├── SECURITY.md                 # Security guide
-├── TROUBLESHOOTING.md          # Problem solving
-├── DOCKER_GUIDE.md             # Docker configuration
-├── FILE_STRUCTURE.md           # This file
-├── docker-compose.yml          # Docker Compose config
-├── docker-setup.sh             # Setup script (executable)
-├── .env.example                # Environment template
-├── .gitignore                  # Git ignore rules
-└── data/                       # Created by setup script
-    ├── config/                 # Configuration files
-    │   └── gateway.json
-    ├── logs/                   # Application logs
-    │   ├── gateway.log
-    │   └── audit.log
-    └── cache/                  # Temporary cache
-        └── models/
+├── README.md                    # Main entry point with quick start
+├── V1.1_RELEASE_NOTES.md       # Release notes for v1.1.0
+├── .env                         # Environment variables (not committed)
+├── .gitignore                   # Git ignore rules
+├── .mcp.json                    # MCP server configuration
+├── .mcp-project.yaml            # MCP project metadata
+│
+├── config/                      # Docker configuration files
+│   ├── docker-compose.yml       # Standard Docker Compose
+│   ├── docker-compose.secure.yml # Hardened Docker Compose
+│   ├── docker-compose.macos.yml # macOS-specific overrides
+│   ├── docker-compose.override.yml.example # Template for local overrides
+│   ├── Dockerfile.secure        # Security-hardened Dockerfile
+│   ├── seccomp-profile.json     # Linux syscall filtering profile
+│   ├── .env.example             # Environment variables template
+│   ├── docker-setup.sh          # Automated Docker setup script
+│   ├── preflight-check.sh       # Pre-deployment verification
+│   ├── install-aliases.sh       # Shell aliases installer
+│   ├── 1password-vault.conf     # 1Password integration config
+│   └── .gitignore               # Config-specific git rules
+│
+├── scripts/                     # Deployment and automation scripts
+│   ├── deploy-secure.sh         # Automated secure Docker deployment
+│   ├── verify-security.sh       # Security configuration verification
+│   ├── verify-connection.sh     # Distributed system connectivity test
+│   ├── fix-auto-restart.sh      # Remote Mac auto-restart setup
+│   ├── setup-tailscale.sh       # Tailscale VPN setup
+│   ├── setup-mcp.sh             # MCP servers configuration
+│   ├── install-orbstack-remote.sh # OrbStack/Docker remote install
+│   ├── post-restart-setup.sh    # Post-restart configuration
+│   └── lib/
+│       └── common.sh            # Shared library functions
+│
+├── docs/                        # Documentation
+│   ├── README.md                # Documentation home
+│   ├── INDEX.md                 # Complete navigation index
+│   ├── FILE_STRUCTURE.md        # This file
+│   ├── DEPLOYMENT.md            # Standard deployment guide
+│   ├── SECURE_DEPLOYMENT.md     # Secure container deployment
+│   ├── DOCKER_GUIDE.md          # Docker configuration reference
+│   ├── SECURITY.md              # Security best practices
+│   ├── TROUBLESHOOTING.md       # Docker troubleshooting
+│   ├── QUICK_REFERENCE.md       # Daily command cheat sheet
+│   ├── INTEGRATION_GUIDE.md     # Integration with official Clawdbot
+│   ├── MACOS_INTEGRATION.md     # macOS-specific features
+│   ├── CHANGELOG.md             # Version history
+│   ├── SETUP_COMPLETE.md        # Setup completion summary
+│   ├── MCP_SETUP_ISSUES.md      # MCP troubleshooting
+│   ├── SYSTEM_STATUS.md         # Current system configuration
+│   ├── AUTO_RESTART_FIX.md      # LaunchAgent setup
+│   ├── REMOTE_ACCESS_GUIDE.md   # LAN/Tailscale access methods
+│   ├── DISTRIBUTED_TROUBLESHOOTING.md # Multi-Mac troubleshooting
+│   └── DISTRIBUTED_QUICK_REFERENCE.md # Distributed commands
+│
+└── .claude/                     # Claude Code configuration
+    ├── settings.local.json      # Local settings
+    └── skills/
+        └── exa-search.md        # Exa search skill
 ```
 
-## 🚀 Getting Started
+## File Categories
 
-1. **First Time Setup**:
+### Root Files
 
-   ```bash
-   ./docker-setup.sh
-   ```
+| File | Purpose |
+|------|---------|
+| `README.md` | Main entry point with quick start and system architecture |
+| `V1.1_RELEASE_NOTES.md` | v1.1.0 release notes with secure container features |
+| `.gitignore` | Git ignore rules for environment files and data |
+| `.mcp.json` | MCP server configuration (Docker, GitHub, Context7) |
+| `.mcp-project.yaml` | MCP project metadata and server enablement |
 
-2. **Read Documentation**:
+### Configuration (config/)
 
-   - Start with `README.md` for overview
-   - Check `QUICK_REFERENCE.md` for commands
-   - Review `SECURITY.md` for security setup
-   - Consult `TROUBLESHOOTING.md` if issues arise
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Standard Docker services definition |
+| `docker-compose.secure.yml` | Hardened Docker Compose with security constraints |
+| `docker-compose.macos.yml` | macOS-specific overrides |
+| `Dockerfile.secure` | Security-hardened image wrapping Clawdbot npm |
+| `seccomp-profile.json` | Custom Linux syscall filtering |
+| `.env.example` | Environment variables template |
+| `docker-setup.sh` | Automated Docker setup script |
+| `preflight-check.sh` | Pre-deployment verification |
+| `install-aliases.sh` | Shell aliases installer |
 
-3. **Configure Environment**:
+### Scripts (scripts/)
 
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
+| Script | Purpose |
+|--------|---------|
+| `deploy-secure.sh` | One-command secure deployment with all hardening |
+| `verify-security.sh` | Automated security configuration verification |
+| `verify-connection.sh` | Test gateway/node connectivity |
+| `fix-auto-restart.sh` | Enable LaunchAgent auto-start on remote Mac |
+| `setup-tailscale.sh` | Configure Tailscale VPN for remote access |
+| `setup-mcp.sh` | Configure MCP servers |
+| `lib/common.sh` | Shared utilities (colors, SSH helpers, tokens) |
 
-4. **Follow Setup Steps** in `README.md`
+### Documentation (docs/)
 
-## 📖 Documentation Flow
+See [INDEX.md](INDEX.md) for detailed documentation navigation.
 
-```
-README.md (Start Here)
-    ↓
-QUICK_REFERENCE.md (Daily Commands)
-    ↓
-SECURITY.md (Security Setup)
-    ↓
-DOCKER_GUIDE.md (Advanced Config)
-    ↓
-TROUBLESHOOTING.md (When Issues Occur)
-```
+## Quick Start
 
-## 🔍 Finding Information
+1. **Run pre-flight check**: `./config/preflight-check.sh`
+2. **Deploy securely**: `./scripts/deploy-secure.sh`
+3. **Verify security**: `./scripts/verify-security.sh`
+4. **Access dashboard**: `open http://localhost:18789`
 
-### "How do I start the gateway?"
+## Statistics
 
-→ `QUICK_REFERENCE.md` - Gateway Control section
+| Category | Count |
+|----------|-------|
+| Configuration files | 12 |
+| Scripts | 9 |
+| Documentation files | 19 |
+| **Total** | **40+** |
 
-### "How do I configure security?"
+---
 
-→ `SECURITY.md` - Security Configuration section
-
-### "The gateway won't start"
-
-→ `TROUBLESHOOTING.md` - Gateway Issues section
-
-### "How do I change the port?"
-
-→ `DOCKER_GUIDE.md` - Environment Variables section
-
-### "What commands are available?"
-
-→ `QUICK_REFERENCE.md` - All sections
-
-### "How do I customize Docker setup?"
-
-→ `DOCKER_GUIDE.md` - Customization section
-
-## 🛠️ File Maintenance
-
-### Regular Updates
-
-- `README.md` - Update version numbers and links
-- `QUICK_REFERENCE.md` - Add new commands as features are added
-- `SECURITY.md` - Update security recommendations
-- `TROUBLESHOOTING.md` - Add new issues and solutions
-- `DOCKER_GUIDE.md` - Update configuration options
-
-### Version Control
-
-- Commit all documentation changes
-- Tag releases with version numbers
-- Keep `.env.example` updated with new variables
-- Never commit `.env` file
-
-### Backup Important Files
-
-```bash
-# Backup configuration
-cp .env .env.backup
-
-# Backup data directory
-tar -czf clawdbot-backup-$(date +%Y%m%d).tar.gz data/
-```
-
-## 📝 Contributing
-
-When adding new features:
-
-1. Update relevant documentation files
-2. Add commands to `QUICK_REFERENCE.md`
-3. Document configuration in `DOCKER_GUIDE.md`
-4. Add troubleshooting tips to `TROUBLESHOOTING.md`
-5. Update security considerations in `SECURITY.md`
-6. Update this file if structure changes
-
-## 🔗 External Resources
-
-- **Clawdbot Repository**: https://github.com/clawdbot/clawdbot
-- **Documentation Site**: https://docs.clawd.bot
-- **Discord Community**: https://discord.gg/clawdbot
-- **Issue Tracker**: https://github.com/clawdbot/clawdbot/issues
-
-## 📄 License
-
-All documentation and configuration files in this repository are provided as-is for use with Clawdbot.
+**Last Updated**: 2026-01-27
