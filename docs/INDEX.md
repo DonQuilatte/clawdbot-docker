@@ -15,7 +15,7 @@
 - `preflight-check.sh` - Pre-deployment verification
 - `install-aliases.sh` - Shell aliases installer
 
-### Documentation (8 files)
+### Documentation - Docker (8 files)
 
 - `README.md` - Main documentation
 - `DEPLOYMENT.md` - Deployment guide
@@ -25,6 +25,14 @@
 - `DOCKER_GUIDE.md` - Docker configuration
 - `FILE_STRUCTURE.md` - Repository structure
 - `SETUP_COMPLETE.md` - Setup summary
+
+### Documentation - Distributed System (5 files)
+
+- `SYSTEM_STATUS.md` - Current system configuration and versions
+- `AUTO_RESTART_FIX.md` - LaunchAgent setup for remote Mac
+- `REMOTE_ACCESS_GUIDE.md` - LAN, Tailscale, and VPN access methods
+- `DISTRIBUTED_TROUBLESHOOTING.md` - Distributed system troubleshooting
+- `DISTRIBUTED_QUICK_REFERENCE.md` - Distributed system commands
 
 ### This File
 
@@ -52,9 +60,18 @@
 
 ### "Something is broken"
 
-1. Check `TROUBLESHOOTING.md` first
-2. Run `docker compose logs clawdbot-gateway`
-3. Run `docker compose run --rm clawdbot-cli doctor`
+1. Check `TROUBLESHOOTING.md` first (Docker issues)
+2. Check `DISTRIBUTED_TROUBLESHOOTING.md` (multi-Mac issues)
+3. Run `docker compose logs clawdbot-gateway`
+4. Run `docker compose run --rm clawdbot-cli doctor`
+
+### "I want to set up distributed system (two Macs)"
+
+1. Read `SYSTEM_STATUS.md` for overview
+2. Follow `REMOTE_ACCESS_GUIDE.md` for SSH setup
+3. Run `./scripts/fix-auto-restart.sh` to enable auto-start
+4. Use `./scripts/verify-connection.sh` to verify
+5. Reference `DISTRIBUTED_QUICK_REFERENCE.md` for daily commands
 
 ### "I want daily operations"
 
@@ -324,7 +341,7 @@ When adding new files or features:
 
 ---
 
-**Last Updated**: 2026-01-25  
-**Version**: 1.0.0  
-**Total Files**: 15  
-**Total Documentation**: ~90KB
+**Last Updated**: 2026-01-27
+**Version**: 1.1.0
+**Total Files**: 20+
+**Total Documentation**: ~120KB

@@ -8,6 +8,7 @@ Complete Docker-based setup guide for Clawdbot with Claude Code authentication a
 
 ## 📚 Documentation
 
+### Docker Deployment
 - **[INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)** - **START HERE** - How to use this guide with official Clawdbot
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Step-by-step deployment guide
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Essential commands for daily use
@@ -17,11 +18,25 @@ Complete Docker-based setup guide for Clawdbot with Claude Code authentication a
 - **[FILE_STRUCTURE.md](FILE_STRUCTURE.md)** - Repository structure overview
 - **[INDEX.md](INDEX.md)** - Complete navigation index
 
+### Distributed System (Multi-Mac)
+- **[SYSTEM_STATUS.md](SYSTEM_STATUS.md)** - Current system configuration and versions
+- **[AUTO_RESTART_FIX.md](AUTO_RESTART_FIX.md)** - LaunchAgent setup for remote Mac auto-start
+- **[REMOTE_ACCESS_GUIDE.md](REMOTE_ACCESS_GUIDE.md)** - LAN, Tailscale, and VPN access methods
+- **[DISTRIBUTED_TROUBLESHOOTING.md](DISTRIBUTED_TROUBLESHOOTING.md)** - Distributed system troubleshooting
+- **[DISTRIBUTED_QUICK_REFERENCE.md](DISTRIBUTED_QUICK_REFERENCE.md)** - Daily commands for multi-Mac setup
+
 ## 🛠️ Utility Scripts
 
-- **[docker-setup.sh](docker-setup.sh)** - Automated setup script
-- **[preflight-check.sh](preflight-check.sh)** - Pre-deployment verification
-- **[install-aliases.sh](install-aliases.sh)** - Install helpful shell aliases
+### Docker Scripts
+- **docker-setup.sh** - Automated Docker setup script
+- **preflight-check.sh** - Pre-deployment verification
+- **install-aliases.sh** - Install helpful shell aliases
+
+### Distributed System Scripts
+- **[scripts/verify-connection.sh](../scripts/verify-connection.sh)** - Verify distributed system connectivity
+- **[scripts/fix-auto-restart.sh](../scripts/fix-auto-restart.sh)** - Configure auto-restart on remote Mac
+- **[scripts/setup-tailscale.sh](../scripts/setup-tailscale.sh)** - Setup Tailscale for remote access
+- **[scripts/install-orbstack-remote.sh](../scripts/install-orbstack-remote.sh)** - Install OrbStack on remote (optional)
 
 ## 🎯 Quick Start
 
