@@ -17,15 +17,15 @@
       "description": "Official Clawdbot GitHub repo docs",
       "topics": ["installation", "development", "testing", "extensions"]
     },
-    "clawdbot-website": {
-      "id": "/websites/clawd_bot",
-      "description": "Clawdbot website documentation",
-      "topics": ["overview", "features", "quickstart"]
+    "docker-mcp-toolkit": {
+      "id": "/docker/mcp-toolkit",
+      "description": "Docker MCP Toolkit - manage MCP servers across AI clients",
+      "topics": ["mcp", "servers", "clients", "configuration", "docker"]
     },
-    "clawdbot-nix": {
-      "id": "/clawdbot/nix-clawdbot",
-      "description": "Nix package for Clawdbot",
-      "topics": ["nix", "flake", "service", "darwin"]
+    "docker-desktop-mac": {
+      "id": "/docker/desktop-mac",
+      "description": "Docker Desktop for Mac documentation",
+      "topics": ["installation", "settings", "virtualization", "apple-silicon", "troubleshooting"]
     },
     "docker": {
       "id": "/docker/docs",
@@ -36,16 +36,6 @@
       "id": "/docker/compose",
       "description": "Docker Compose reference",
       "topics": ["services", "volumes", "networks", "deploy"]
-    },
-    "antigravity": {
-      "id": "/alphaperseii3000/google-antigravity-docs",
-      "description": "Google Antigravity MCP & browser integration",
-      "topics": ["mcp", "browser", "skills", "agents"]
-    },
-    "exa": {
-      "id": "/websites/exa_ai",
-      "description": "Exa AI-powered search API",
-      "topics": ["search", "crawling", "research", "code-context"]
     }
   },
   "context7Defaults": {

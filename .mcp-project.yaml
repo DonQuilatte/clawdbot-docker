@@ -1,0 +1,45 @@
+# MCP Project Configuration for Clawdbot Docker Wrapper
+# Generated: 2026-01-27
+
+project:
+  name: clawdbot-docker
+  type: docker-deployment
+  description: Enterprise-grade Docker wrapper for Clawdbot WhatsApp/Discord gateway
+
+detected:
+  - docker
+  - docker-compose
+  - bash
+  - git
+  - yaml
+
+# Essential servers for this Docker deployment project
+servers:
+  # Core - always enabled
+  - context7        # Documentation (Clawdbot, Docker MCP Toolkit, Docker Desktop Mac)
+  - docker          # Docker CLI operations
+  - dockerhub       # Docker Hub image management
+  - git             # Git repository operations
+  - github-official # GitHub PRs, issues, actions
+
+# Servers NOT needed for this project (disabled)
+disabled:
+  - puppeteer          # Browser automation - not needed
+  - youtube_transcript # Video transcripts - not needed
+  - desktop-commander  # Redundant with Claude Code file tools
+  - fetch              # Redundant with Claude Code WebFetch
+
+notes: |
+  This is a Docker wrapper project focused on:
+  - Container deployment and security hardening
+  - macOS/Apple Silicon optimization
+  - 1Password secrets integration
+  - MCP server configuration
+
+  Context7 libraries configured in .mcp.json:
+  - clawdbot (full docs)
+  - clawdbot-repo (GitHub)
+  - docker-mcp-toolkit (MCP Toolkit docs)
+  - docker-desktop-mac (macOS Docker)
+  - docker (general docs)
+  - docker-compose (compose reference)
