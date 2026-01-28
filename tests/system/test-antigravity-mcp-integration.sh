@@ -95,10 +95,11 @@ cd "$PROJECT_ROOT"
 if direnv status >/dev/null 2>&1; then
     test_pass "direnv status command works"
     
-    # Check if .envrc is allowed
-    if direnv status 2>&1 | grep -q "Found RC allowed true"; then
+    # Check if .envrc is allowed (loaded = allowed)
+    DIRENV_OUTPUT=$(direnv status 2>&1)
+    if echo "$DIRENV_OUTPUT" | grep -q "Loaded RC path"; then
         test_pass ".envrc is allowed by direnv"
-    elif direnv status 2>&1 | grep -q "allowed"; then
+    elif direnv status 2>&1 | grep -q "Found RC allowed true"; then
         test_pass ".envrc is allowed by direnv"
     else
         test_fail ".envrc is allowed" "run 'direnv allow'"
@@ -195,10 +196,11 @@ for script in mcp-gitkraken mcp-docker mcp-filesystem; do
             test_skip "$script uses 'set -e'" "not critical"
         fi
         
-        if grep -q "exec npx" "$SCRIPT_PATH"; then
-            test_pass "$script uses 'exec npx' for proper process replacement"
+        # Check for exec (npx, gk, or other commands)
+        if grep -qE "^exec " "$SCRIPT_PATH"; then
+            test_pass "$script uses 'exec' for proper process replacement"
         else
-            test_fail "$script uses 'exec npx'" "should use exec for proper process handling"
+            test_fail "$script uses 'exec'" "should use exec for proper process handling"
         fi
     fi
 done
