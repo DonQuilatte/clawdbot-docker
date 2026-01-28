@@ -78,19 +78,20 @@ services:
 
     tmpfs:
       # SECURITY: Use mode=1770 (sticky bit, owner+group writable) instead of world-writable 1777
-      - /tmp:mode=1770,size=512M,noexec,nosuid,nodev,uid=1000,gid=1000
-      - /run:mode=0750,size=128M,noexec,nosuid,nodev,uid=1000,gid=1000
-      - /home/node/.npm:mode=0750,size=256M,uid=1000,gid=1000
-      - /home/node/clawd:mode=0750,size=256M,uid=1000,gid=1000
+      # NOTE: uid/gid=501:20 matches macOS default user (docker-compose doesn't support vars in tmpfs)
+      - /tmp:mode=1770,size=512M,noexec,nosuid,nodev,uid=501,gid=20
+      - /run:mode=0750,size=128M,noexec,nosuid,nodev,uid=501,gid=20
+      - /home/node/.npm:mode=0750,size=256M,uid=501,gid=20
+      - /home/node/clawd:mode=0750,size=256M,uid=501,gid=20
 
     # SECURITY: Run as non-root user (matching host UID for volume permissions)
     user: "${USER_UID:-501}:${USER_GID:-20}"
 
     # SECURITY: Writable volumes (minimal)
-    # Optional host mounts can be added via docker-compose.override.yml
+    # Use host directories with correct ownership for macOS (uid 501)
     volumes:
-      - clawdbot-config:/home/node/.clawdbot:rw
-      - clawdbot-logs:/home/node/logs:rw
+      - ${HOME}/.clawdbot-docker:/home/node/.clawdbot:rw
+      - ${HOME}/.clawdbot-docker/logs:/home/node/logs:rw
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -113,7 +114,7 @@ services:
     logging: *common-logging
 
     # Run gateway command
-    # SECURITY: Bind to localhost only (not lan) to prevent network exposure
+    # SECURITY: Bind to lan inside container (Docker port mapping restricts to 127.0.0.1 on host)
     command:
       [
         "clawdbot",
@@ -121,7 +122,7 @@ services:
         "--port",
         "18789",
         "--bind",
-        "localhost",
+        "lan",
         "--allow-unconfigured",
         "--token",
         "${CLAWDBOT_GATEWAY_TOKEN}",
