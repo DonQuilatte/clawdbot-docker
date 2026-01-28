@@ -7,6 +7,10 @@
     "filesystem": {
       "command": "bash",
       "args": ["./scripts/mcp-filesystem"]
+    },
+    "context7": {
+      "command": "bash",
+      "args": ["./scripts/mcp-context7"]
     }
   }
 }
