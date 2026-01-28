@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "gitkraken": {
+      "command": "bash",
+      "args": ["./scripts/mcp-gitkraken"]
+    },
+    "filesystem": {
+      "command": "bash",
+      "args": ["./scripts/mcp-filesystem"]
+    }
+  }
+}
