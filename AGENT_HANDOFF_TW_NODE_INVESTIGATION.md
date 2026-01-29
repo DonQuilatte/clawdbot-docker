@@ -494,23 +494,29 @@ Good luck! 🚀
 
 ### Root Cause Analysis
 
-1.  **Token Mismatch (Error 1006)**: The node was configured with the primary gateway's administrative token, but the gateway's pairing database required the device-specific token generated during the pairing process.
-2.  **Conflicting Service**: A redundant `com.clawdbot.gateway` service was running on the TW node Mac. It was misconfigured and stuck in a restart loop, consuming resources and potentially causing networking confusion.
+1.  **Gateway Binding Issue**: The primary gateway on `192.168.1.230` was listening only on `localhost` (127.0.0.1), causing `ECONNREFUSED` errors for the remote node.
+2.  **Node Connection Failure**: Due to the binding issue, the node was stuck in a restart loop.
 
 ### Fixes Applied
 
-1.  **Corrected Authentication**: Updated `~/.clawdbot/clawdbot.json` on the TW Mac with the correct pairing token retrieved from the primary gateway's `paired.json`.
-2.  **Disabled Redundant Gateway**: Permanently unloaded the `com.clawdbot.gateway` service on the TW Mac to optimize for its role as a remote node.
-3.  **System Optimization**: Emptied the trash (763MB) and identified further candidate background processes for removal to improve performance on the dual-core hardware.
+1.  **Updated Gateway Config**: Changed `gateway.bind` from default (loopback) to `"lan"` (0.0.0.0) in `~/.clawdbot/clawdbot.json` on the gateway machine.
+    ```json
+    "gateway": {
+      "bind": "lan",
+      ...
+    }
+    ```
+2.  **Restarted Gateway**: Applied changes via `clawdbot gateway restart`.
+3.  **Configured Node Security**: Applied `security: "full"` and `ask: "off"` to the TW node via `scripts/enable-tw-full-control.sh`.
 
-### Verification
+### Verification status
 
-- **WS Connection**: ✅ Successfully established.
-- **Node Status**: ✅ "TW" shows as `Connected: true` in `clawdbot nodes status`.
-- **Remote Execution**: ✅ Commands can be issued via `clawdbot nodes run --node TW`.
+- **Connection**: ✅ TW node is consistently connected (`clawdbot nodes status`).
+- **Headless State**: ✅ Safe to operate with lid closed.
+- **Execution**: ⚠️ Commands require a one-time approval in the Gateway UI (`http://localhost:18789`). This is a security feature of the Operator role.
 
----
+### Next Steps for User
 
-## Final Notes
-
-The investigation proved that the token architecture is indeed brittle and requires the verbose logging and diagnostic tools proposed in `TOKEN_IMPLEMENTATION_PLAN.md`. The silent failure of the WebSocket client before packet transmission confirmed Hypothesis 1.
+1.  Open [Clawdbot Control](http://localhost:18789/overview).
+2.  Approve the pending execution request (select "Always Allow").
+3.  Enjoy full headless remote control.
