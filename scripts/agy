@@ -1,10 +1,59 @@
 #!/bin/bash
-# agy - Quick launcher for AntiGravity project sessions
-# Defaults to local, use -r/--remote for TW Mac
+# agy - Router that detects context and chooses execution automatically
+# Enhanced with smart detection
 
+set -e
+
+PROJECTS_DIR="$HOME/Development/Projects"
+
+# Detect if we're in a project directory
+detect_project() {
+    local current_dir="$PWD"
+    
+    # Check if we're in a project (has .envrc or scripts/project-setup.sh)
+    if [[ "$current_dir" == "$PROJECTS_DIR"/* ]] && \
+       { [ -f ".envrc" ] || [ -f "scripts/project-setup.sh" ]; }; then
+        basename "$current_dir"
+        return 0
+    fi
+    return 1
+}
+
+# No arguments - smart mode
+if [ $# -eq 0 ]; then
+    PROJECT_NAME=$(detect_project)
+    
+    if [ -n "$PROJECT_NAME" ]; then
+        echo "📍 Detected project: $PROJECT_NAME"
+        echo "🚀 Starting local Claude session..."
+        exec "$(dirname "$0")/agy-local" "$PROJECT_NAME"
+    else
+        echo "Usage: agy [options] <project-or-url> [prompt]"
+        echo ""
+        echo "Smart mode (no arguments):"
+        echo "  Run 'agy' from a project directory to auto-start"
+        echo ""
+        echo "Options:"
+        echo "  -r, --remote    Use TW Mac (remote execution with job tracking)"
+        echo "  -l, --local     Use this Mac (local execution)"
+        echo ""
+        echo "Examples:"
+        echo "  cd ~/Development/Projects/myapp && agy              # Auto-detect & start local"
+        echo "  agy myapp                                            # Start local"
+        echo "  agy -r myapp \"analyze code\"                         # Start remote + track job"
+        echo "  agy git@github.com:you/repo.git                      # Clone + start local"
+        exit 1
+    fi
+fi
+
+# With arguments - check for flags
 if [[ "$1" == "-r" || "$1" == "--remote" ]]; then
     shift
-    exec ~/bin/agy-project "$@"
+    exec "$(dirname "$0")/agy-project" "$@"
+elif [[ "$1" == "-l" || "$1" == "--local" ]]; then
+    shift
+    exec "$(dirname "$0")/agy-local" "$@"
 else
-    exec ~/bin/agy-local "$@"
+    # Default to local
+    exec "$(dirname "$0")/agy-local" "$@"
 fi
