@@ -4,16 +4,20 @@
 
 set -e
 
-REMOTE_HOST="tywhitaker@192.168.1.245"
-GATEWAY_URL="http://localhost:18789"
-TEST_RESULTS="/tmp/clawdbot-test-results.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common library for colors and shared functions
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+load_env
+
+# Configuration from environment (with defaults for backwards compatibility)
+REMOTE_USER="${REMOTE_USER:-tywhitaker}"
+REMOTE_IP="${REMOTE_HOST:-192.168.1.245}"
+REMOTE_HOST="${REMOTE_USER}@${REMOTE_IP}"
+GATEWAY_PORT="${GATEWAY_PORT:-18789}"
+GATEWAY_URL="http://localhost:${GATEWAY_PORT}"
+TEST_RESULTS="/tmp/clawdbot-test-results.log"
 
 # Counters
 TESTS_PASSED=0

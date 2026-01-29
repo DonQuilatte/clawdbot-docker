@@ -6,21 +6,30 @@
 
 set -e
 
-# Tailscale config (primary)
-TW_TAILSCALE_IP="100.81.110.81"
-TW_LAN_IP="192.168.1.245"
-TW_HOST="tw"  # Uses SSH config which points to Tailscale
-SSH_KEY="$HOME/.ssh/id_ed25519_clawdbot"
-SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -i $SSH_KEY"
-CONTROL_SOCKET="$HOME/.ssh/sockets/tywhitaker@100.81.110.81-22"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source common library for colors (with fallback if not found)
+if [[ -f "$PROJECT_ROOT/scripts/lib/common.sh" ]]; then
+    # shellcheck source=../../scripts/lib/common.sh
+    source "$PROJECT_ROOT/scripts/lib/common.sh"
+else
+    # Fallback colors if common.sh not available
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+fi
+
+# Configuration from environment (with defaults)
+TW_TAILSCALE_IP="${TW_TAILSCALE_IP:-100.81.110.81}"
+TW_LAN_IP="${TW_LAN_IP:-192.168.1.245}"
+TW_HOST="${TW_HOST:-tw}"  # Uses SSH config which points to Tailscale
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519_clawdbot}"
+SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -i $SSH_KEY"
+CONTROL_SOCKET="$HOME/.ssh/sockets/tywhitaker@${TW_TAILSCALE_IP}-22"
 
 status() {
     echo -e "${BLUE}=== TW Mac Status ===${NC}"

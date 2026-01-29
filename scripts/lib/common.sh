@@ -119,10 +119,9 @@ get_gateway_token() {
         fi
         
         local token
-        token=$(op read "$token_ref")
-        if [ $? -ne 0 ]; then
-             echo "❌ ERROR: Failed to read from 1Password" >&2
-             return 1
+        if ! token=$(op read "$token_ref" 2>/dev/null); then
+            echo "❌ ERROR: Failed to read from 1Password" >&2
+            return 1
         fi
         echo "$token"
     else
