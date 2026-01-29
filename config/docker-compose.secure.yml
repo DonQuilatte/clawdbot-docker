@@ -70,11 +70,19 @@ services:
           cpus: "0.5"
           memory: 512M
 
-    # Include shared security settings
-    <<: *common-security
+    # SECURITY: Read-only root filesystem
+    read_only: true
+    # SECURITY: Drop all capabilities, then add back only what's needed
+    cap_drop:
+      - ALL
     # Gateway needs NET_BIND_SERVICE capability
     cap_add:
       - NET_BIND_SERVICE
+    # SECURITY: No privileged mode
+    privileged: false
+    # SECURITY: Prevent privilege escalation
+    security_opt:
+      - no-new-privileges:true
 
     tmpfs:
       # SECURITY: Use mode=1770 (sticky bit, owner+group writable) instead of world-writable 1777
