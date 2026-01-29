@@ -1,8 +1,12 @@
 # Evidence Addendum: Raw Data & Test Results
 
-**Document:** TW Node Troubleshooting Session 2026-01-28  
-**Created:** 2026-01-28 19:47 UTC  
+**Document:** TW Node Troubleshooting Session 2026-01-28
+**Created:** 2026-01-28 19:47 UTC
+**Updated:** 2026-01-29
+**Status:** ✅ **RESOLVED** - Issue fixed, diagnostic items no longer needed
 **Purpose:** Concrete evidence for all assertions in the troubleshooting report
+
+> **Resolution Note:** The Error 1006 issue was resolved on 2026-01-29. Root cause was token mismatch (node using Gateway Admin Token instead of pairing token) combined with a hidden Docker container conflict. See `TW_NODE_RESOLUTION.md` for full details.
 
 ---
 
@@ -425,34 +429,35 @@ tywhitaker  81546  0.0  0.6  Node process running
 
 ## 10. Gap Analysis: What's Still Missing
 
-### Missing Tests
+> **⚠️ OBSOLETE SECTION** - These diagnostic steps were superseded by the resolution on 2026-01-29.
+> The root cause was identified through other means (token mismatch + Docker container conflict).
+> Retained for historical reference only.
 
-1. **Packet Capture** ❌
+### ~~Missing Tests~~ (No Longer Needed)
 
-   - Need to run `tcpdump` on gateway during node restart
-   - Will show if ANY packets reach gateway
-   - Will show WebSocket upgrade request headers
+1. ~~**Packet Capture**~~ ✅ NOT NEEDED
 
-2. **WebSocket Path Test** ❌
+   - Issue resolved without packet capture
+   - Root cause was token mismatch, not network layer
 
-   - Test with `websocat ws://192.168.1.230:18789`
-   - Test with possible paths: `/ws`, `/api/node`, `/socket`
-   - Determine expected WebSocket endpoint path
+2. ~~**WebSocket Path Test**~~ ✅ NOT NEEDED
 
-3. **Manual Foreground Run with Debug** ❌
+   - WebSocket path was correct (no path required)
+   - Issue was authentication, not endpoint configuration
 
-   - Direct SSH session (not via command)
-   - With `DEBUG=*` environment variable
-   - Compare to LaunchAgent behavior
+3. ~~**Manual Foreground Run with Debug**~~ ✅ NOT NEEDED
 
-4. **Token Flag Test** ❌
+   - LaunchAgent behavior was not the issue
+   - Token configuration was the culprit
 
-   - Try with explicit `--token` flag on command line
-   - Verify token is being read from config file
+4. ~~**Token Flag Test**~~ ✅ RESOLVED DIFFERENTLY
 
-5. **Different Node Command** ❌
-   - Try `node start` instead of `node run` (if supported)
-   - Try without `--host` and `--port` (let it use config)
+   - Issue was using wrong token (Admin vs Pairing token)
+   - Fixed by updating `~/.clawdbot/clawdbot.json` with correct pairing token
+
+5. ~~**Different Node Command**~~ ✅ NOT NEEDED
+   - `node run` command was correct
+   - Issue was token and Docker container conflict
 
 ### Confirmed Facts
 
@@ -488,67 +493,40 @@ tywhitaker  81546  0.0  0.6  Node process running
 
 ## 11. Hypotheses Updated with Evidence
 
-### Hypothesis 1: WebSocket Client Bug (85% → 90%)
+> **⚠️ RESOLVED** - Actual root cause was a combination of Hypothesis 4 (token issue) and an undiscovered Docker container conflict.
 
-**Evidence supporting:**
+### Hypothesis 1: WebSocket Client Bug ~~(85% → 90%)~~ → **RULED OUT**
 
-- ✅ TCP works but WebSocket fails
-- ✅ Error message is completely empty
-- ✅ No connection attempts in gateway logs
-- ✅ Versions match (not incompatibility)
-- ✅ Network layer works fine
+- The WebSocket client was working correctly
+- Issue was token authentication, not the client itself
 
-**What would confirm:**
-
-- Packet capture showing no WebSocket upgrade request
-- Source code review showing error handling bug
-- Websocat test succeeding when node fails
-
-### Hypothesis 2: Version Incompatibility (20% → 0%)
-
-**Evidence disproving:**
+### Hypothesis 2: Version Incompatibility ~~(20% → 0%)~~ → **RULED OUT**
 
 - ✅ Both running 2026.1.24-3
-- **RULED OUT**
+- Confirmed not the issue
 
-### Hypothesis 3: Missing WebSocket Path (NEW - 5%)
+### Hypothesis 3: Missing WebSocket Path ~~(NEW - 5%)~~ → **RULED OUT**
 
-**Evidence supporting:**
+- WebSocket path was correct (no path required)
+- Issue was authentication layer
 
-- ⚠️ No path in URL (`ws://192.168.1.230:18789`)
-- ⚠️ Unknown if gateway expects specific path
+### Hypothesis 4: Token Not Being Sent ~~(NEW - 3%)~~ → **✅ CONFIRMED (Partial)**
 
-**What would confirm:**
+- **ACTUAL ROOT CAUSE:** Node was sending the *wrong* token
+- Node was configured with Gateway Admin Token instead of device-specific pairing token
+- Fix: Updated config with correct pairing token (`f988...`)
 
-- Websocat test showing path requirement
-- Gateway returning 404 for root path
+### Hypothesis 5: Device ID Confusion ~~(NEW - 2%)~~ → **RULED OUT**
 
-### Hypothesis 4: Token Not Being Sent (NEW - 3%)
+- Device pairing was correct
+- Issue was token value, not device ID
 
-**Evidence supporting:**
+### Undiscovered Root Cause: Docker Container Conflict → **✅ CONFIRMED**
 
-- ⚠️ No `--token` flag in command
-- ⚠️ Relying on config file reading
-- ⚠️ Two device IDs from same IP
-
-**What would confirm:**
-
-- Gateway showing "missing token" in logs
-- Packet capture showing no auth header
-- Explicit --token flag fixing it
-
-### Hypothesis 5: Device ID Confusion (NEW - 2%)
-
-**Evidence supporting:**
-
-- ⚠️ Two paired devices from same IP
-- ⚠️ Different device IDs and roles
-- ⚠️ Unknown which one node is using
-
-**What would confirm:**
-
-- Node attempting to use wrong device ID
-- Gateway rejecting mismatched ID
+- Hidden Docker container `clawdbot-gateway-secure` was binding port 18789
+- Container had old `clawdbot-local-dev` token
+- All connection attempts were hitting the container, not the local gateway
+- Fix: Stopped the Docker container
 
 ---
 
@@ -578,11 +556,30 @@ This addendum provides concrete evidence for all key assertions:
 6. ✅ **Device pairing:** Two devices, both approved, with device IDs
 7. ✅ **LaunchAgent:** Current running state and startup script
 
-**Still needed:**
+---
 
-- ❌ Packet capture during connection attempt
-- ❌ Manual `websocat` test
-- ❌ Foreground run with debug logging
-- ❌ Test with explicit `--token` flag
+## ✅ Resolution (2026-01-29)
 
-**Next investigation step:** Packet capture (highest priority)
+**Issue Status:** RESOLVED
+
+**Root Causes Identified:**
+1. **Token Mismatch** - Node was using Gateway Admin Token instead of specific pairing token (`f988...`)
+2. **Docker Container Conflict** - Hidden container `clawdbot-gateway-secure` was intercepting port 18789
+3. **Redundant Gateway Service** - Local gateway running on TW Mac was consuming resources
+
+**Fixes Applied:**
+- Updated `~/.clawdbot/clawdbot.json` on TW node with correct pairing token
+- Stopped conflicting Docker container
+- Disabled redundant gateway service on TW Mac
+
+**Verification:**
+- TW node now fully connected and reporting healthy
+- Remote command execution working via `clawdbot nodes run --node TW`
+
+**Previously listed "Still needed" items are now obsolete:**
+- ~~Packet capture during connection attempt~~ - Not needed
+- ~~Manual `websocat` test~~ - Not needed
+- ~~Foreground run with debug logging~~ - Not needed
+- ~~Test with explicit `--token` flag~~ - Resolved differently
+
+See `TW_NODE_RESOLUTION.md` for complete resolution details.
