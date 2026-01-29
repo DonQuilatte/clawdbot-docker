@@ -1,0 +1,49 @@
+#!/bin/bash
+# Post-commit hook: Auto-dispatch tests to TW Mac in background
+# Install: ln -sf $(pwd)/infrastructure/tw-mac/automation/git-hooks/post-commit .git/hooks/post-commit
+
+TW_CONTROL="$HOME/bin/tw"
+HANDOFF_DIR="$HOME/tw-mac/handoffs"
+
+# Check if TW Mac is available
+if ! "$TW_CONTROL" run 'echo ok' >/dev/null 2>&1; then
+    exit 0
+fi
+
+# Get commit info
+COMMIT_MSG=$(git log -1 --pretty=%B)
+COMMIT_SHA=$(git log -1 --pretty=%h)
+CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
+
+# Create automatic handoff
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+HANDOFF_FILE="$HANDOFF_DIR/auto-commit-$TIMESTAMP.md"
+
+mkdir -p "$HANDOFF_DIR"
+
+cat > "$HANDOFF_FILE" << EOF
+# Auto-Commit Task
+
+**Commit:** $COMMIT_SHA
+**Message:** $COMMIT_MSG
+**Time:** $(date)
+
+## Changed Files
+\`\`\`
+$CHANGED_FILES
+\`\`\`
+
+## Auto-Tasks
+1. Pull latest changes
+2. Run affected tests
+3. Report any failures
+
+## Response
+Write to: ~/handoffs/response-auto-$TIMESTAMP.md
+EOF
+
+# Dispatch test run in background
+SESSION="auto-test-$COMMIT_SHA"
+"$TW_CONTROL" run "tmux new-session -d -s $SESSION 'cd ~/Development/Projects/clawdbot && git pull && npm test 2>&1 | tee /tmp/test-$COMMIT_SHA.log; echo \"Exit: \$?\" >> /tmp/test-$COMMIT_SHA.log'" 2>/dev/null
+
+echo "Post-commit: Tests dispatched to TW Mac (session: $SESSION)"

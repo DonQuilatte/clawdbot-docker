@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.clawdbot.node</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>
+            cd /Users/tywhitaker/Development/Projects/clawdbot
+            if [ -f .env ]; then
+                TOKEN=$(grep "^CLAWDBOT_GATEWAY_TOKEN=" .env | cut -d= -f2)
+                if [[ "$TOKEN" == op://* ]]; then
+                    export CLAWDBOT_GATEWAY_TOKEN=$(/usr/local/bin/op read "$TOKEN")
+                else
+                    export CLAWDBOT_GATEWAY_TOKEN="$TOKEN"
+                fi
+                set -a; source <(grep -v "^CLAWDBOT_GATEWAY_TOKEN=" .env); set +a
+            fi
+            # Use Tailscale IP for reliable connection
+            exec /Users/tywhitaker/.nvm/versions/node/v24.13.0/bin/node /Users/tywhitaker/.nvm/versions/node/v24.13.0/lib/node_modules/clawdbot/dist/entry.js node run --host 100.73.138.46 --port 18789
+        </string>
+    </array>
+    <key>StandardOutPath</key>
+    <string>/Users/tywhitaker/.clawdbot/logs/node.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/tywhitaker/.clawdbot/logs/node.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/tywhitaker</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/tywhitaker/.nvm/versions/node/v24.13.0/bin</string>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

@@ -1,0 +1,25 @@
+{
+  "folders": [
+    {
+      "name": "Controller (Local)",
+      "path": ".",
+    },
+    {
+      "name": "TW Mac (SMB)",
+      "path": "/Users/jederlichman/tw-mac/Development/Projects/clawdbot",
+    },
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/.DS_Store": true,
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+    },
+  },
+  "extensions": {
+    "recommendations": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"],
+  },
+}

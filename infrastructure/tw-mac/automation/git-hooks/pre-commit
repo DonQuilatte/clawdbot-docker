@@ -1,0 +1,49 @@
+#!/bin/bash
+# Pre-commit hook: Auto-dispatch linting/formatting to TW Mac
+# Install: ln -sf $(pwd)/infrastructure/tw-mac/automation/git-hooks/pre-commit .git/hooks/pre-commit
+
+HOOK_DIR="$(dirname "$0")"
+TW_CONTROL="$HOME/bin/tw"
+
+# Check if TW Mac is available
+if ! "$TW_CONTROL" run 'echo ok' >/dev/null 2>&1; then
+    echo "TW Mac not available, skipping parallel lint"
+    exit 0
+fi
+
+# Get staged files
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+# Count file types
+JS_FILES=$(echo "$STAGED_FILES" | grep -E '\.(js|ts|jsx|tsx)$' | wc -l | tr -d ' ')
+PY_FILES=$(echo "$STAGED_FILES" | grep -E '\.py$' | wc -l | tr -d ' ')
+SH_FILES=$(echo "$STAGED_FILES" | grep -E '\.sh$' | wc -l | tr -d ' ')
+
+echo "Pre-commit: Dispatching checks to TW Mac..."
+
+# Dispatch appropriate linting based on file types
+if [ "$JS_FILES" -gt 0 ]; then
+    "$TW_CONTROL" run "cd ~/Development/Projects/clawdbot && npm run lint 2>&1" &
+    LINT_PID=$!
+fi
+
+if [ "$SH_FILES" -gt 0 ]; then
+    "$TW_CONTROL" run "cd ~/Development/Projects/clawdbot && shellcheck $STAGED_FILES 2>&1" &
+fi
+
+# Wait for lint to complete if started
+if [ -n "$LINT_PID" ]; then
+    wait $LINT_PID
+    LINT_EXIT=$?
+    if [ $LINT_EXIT -ne 0 ]; then
+        echo "Lint failed on TW Mac"
+        exit 1
+    fi
+fi
+
+echo "Pre-commit checks passed"
+exit 0
