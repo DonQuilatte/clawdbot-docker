@@ -14,7 +14,7 @@ URGENCY="$3"  # normal, critical
 # ═══════════════════════════════════════════
 
 # --- macOS Notification Center (default) ---
-osascript -e "display notification \"$MESSAGE\" with title \"Clawdbot: $TITLE\"" 2>/dev/null
+osascript -e "display notification \"$MESSAGE\" with title \"Clawdbot\" subtitle \"$TITLE\"" 2>/dev/null
 
 # --- Sound alert for critical ---
 if [ "$URGENCY" = "critical" ]; then

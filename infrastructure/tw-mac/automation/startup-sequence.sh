@@ -22,7 +22,13 @@ log() {
 }
 
 notify() {
-    osascript -e "display notification \"$1\" with title \"Clawdbot Startup\"" 2>/dev/null
+    local SUBTITLE="$1"
+    local BODY="${2:-}"
+    if [ -n "$BODY" ]; then
+        osascript -e "display notification \"$BODY\" with title \"Clawdbot\" subtitle \"$SUBTITLE\"" 2>/dev/null
+    else
+        osascript -e "display notification \"$SUBTITLE\" with title \"Clawdbot\" subtitle \"Startup\"" 2>/dev/null
+    fi
 }
 
 log "═══════════════════════════════════════"
@@ -37,7 +43,7 @@ while ! ping -c 1 8.8.8.8 >/dev/null 2>&1; do
     ((NETWORK_WAIT++))
     if [ $NETWORK_WAIT -gt 30 ]; then
         log "Network timeout after 60 seconds"
-        notify "Startup failed: No network"
+        notify "No Network" "Startup failed after 60s timeout"
         exit 1
     fi
 done
@@ -77,7 +83,7 @@ done
 
 if [ "$TW_CONNECTED" = false ]; then
     log "Could not connect to TW Mac"
-    notify "TW Mac unreachable - will retry in background"
+    notify "TW Mac Offline" "Will retry connection in background"
 fi
 
 # Step 4: Mount SMB if not mounted
@@ -122,11 +128,11 @@ if [ "$TW_CONNECTED" = true ]; then
     SESSIONS=$("$TW_CONTROL" run 'tmux list-sessions 2>/dev/null | wc -l' 2>/dev/null || echo "0")
     PENDING=$(ls "$HOME/tw-mac/handoffs/response-"*.md 2>/dev/null | wc -l | tr -d ' ')
 
-    STATUS="Connected | $SESSIONS sessions | $PENDING responses"
-    notify "$STATUS"
-    log "Status: $STATUS"
+    STATUS="$SESSIONS sessions | $PENDING pending"
+    notify "TW Mac Ready" "$STATUS"
+    log "Status: Connected | $STATUS"
 else
-    notify "TW Mac offline - monitoring in background"
+    notify "TW Mac Offline" "Background monitoring active"
     log "TW Mac offline"
 fi
 

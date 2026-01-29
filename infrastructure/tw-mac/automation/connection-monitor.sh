@@ -51,14 +51,14 @@ load_state() {
 
 # Alert mechanisms
 send_alert() {
-    local TITLE="$1"
+    local SUBTITLE="$1"
     local MESSAGE="$2"
     local URGENCY="${3:-normal}"
 
-    log "ALERT" "$TITLE: $MESSAGE"
+    log "ALERT" "$SUBTITLE: $MESSAGE"
 
-    # macOS notification
-    osascript -e "display notification \"$MESSAGE\" with title \"Clawdbot: $TITLE\"" 2>/dev/null
+    # macOS notification with subtitle for better visibility
+    osascript -e "display notification \"$MESSAGE\" with title \"Clawdbot\" subtitle \"$SUBTITLE\"" 2>/dev/null
 
     # Terminal bell
     if [ "$URGENCY" = "critical" ]; then
