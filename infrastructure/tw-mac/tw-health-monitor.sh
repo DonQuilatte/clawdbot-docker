@@ -74,8 +74,83 @@ check_and_reconnect() {
     return 0
 }
 
+check_config_sync() {
+    # Note: Global CLAUDE.md files are intentionally different
+    # Controller has orchestrator config, TW Mac has worker config
+    # Only check skills sync
+
+    # Check skills count
+    local LOCAL_SKILLS=$(ls "$HOME/.claude/commands" 2>/dev/null | wc -l | tr -d ' ')
+    local REMOTE_SKILLS=$(SSH_AUTH_SOCK="" ssh $SSH_OPTS $TW_HOST 'ls ~/.claude/commands 2>/dev/null | wc -l | tr -d " "' || echo "0")
+
+    if [ "$LOCAL_SKILLS" != "$REMOTE_SKILLS" ]; then
+        log "WARN: Skills out of sync (local: $LOCAL_SKILLS, remote: $REMOTE_SKILLS) - run tw-sync-config"
+        return 1
+    fi
+
+    return 0
+}
+
+check_pending_handoffs() {
+    # Check for stale handoffs (older than 2 hours with no response)
+    local STALE_COUNT=0
+    local TWO_HOURS_AGO=$(date -v-2H +%Y%m%d-%H%M%S 2>/dev/null || date -d '2 hours ago' +%Y%m%d-%H%M%S 2>/dev/null)
+
+    for handoff in "$HOME/tw-mac/handoffs"/handoff-*.md 2>/dev/null; do
+        if [ -f "$handoff" ]; then
+            local ID=$(basename "$handoff" | sed 's/handoff-//' | sed 's/.md//')
+            if [ ! -f "$HOME/tw-mac/handoffs/response-$ID.md" ]; then
+                # Check if handoff is older than 2 hours
+                if [[ "$ID" < "$TWO_HOURS_AGO" ]]; then
+                    ((STALE_COUNT++))
+                fi
+            fi
+        fi
+    done
+
+    if [ $STALE_COUNT -gt 0 ]; then
+        log "WARN: $STALE_COUNT stale handoff(s) without response (>2 hours old)"
+    fi
+
+    return 0
+}
+
+check_orphan_sessions() {
+    # Check for tmux sessions that might be orphaned
+    local SESSIONS=$(SSH_AUTH_SOCK="" ssh $SSH_OPTS $TW_HOST 'tmux list-sessions -F "#{session_name}:#{session_activity}" 2>/dev/null' || echo "")
+    local NOW=$(date +%s)
+
+    for session in $SESSIONS; do
+        local NAME=$(echo "$session" | cut -d: -f1)
+        local ACTIVITY=$(echo "$session" | cut -d: -f2)
+
+        # Skip mcp session
+        [ "$NAME" = "mcp" ] && continue
+
+        # Check if session has been idle for more than 4 hours (14400 seconds)
+        if [ -n "$ACTIVITY" ]; then
+            local IDLE=$((NOW - ACTIVITY))
+            if [ $IDLE -gt 14400 ]; then
+                log "WARN: Session '$NAME' idle for $((IDLE / 3600)) hours - may be orphaned"
+            fi
+        fi
+    done
+
+    return 0
+}
+
 # Main monitoring loop
+ITERATION=0
 while true; do
     check_and_reconnect
+
+    # Run additional checks every 5 minutes (5 iterations)
+    if [ $((ITERATION % 5)) -eq 0 ]; then
+        check_config_sync
+        check_pending_handoffs
+        check_orphan_sessions
+    fi
+
+    ((ITERATION++))
     sleep 60
 done
