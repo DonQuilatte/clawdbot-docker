@@ -142,6 +142,50 @@ clawdbot node start --host 192.168.1.230 --port 18789
 | `scripts/setup-tailscale.sh`         | Setup Tailscale for remote internet access   |
 | `scripts/install-orbstack-remote.sh` | Install OrbStack/Docker on remote (optional) |
 
+### AntiGravity (agy) Scripts
+
+Project engagement scripts for quickly starting Claude sessions on local or remote machines.
+
+| Script              | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| `scripts/agy`       | Smart router - auto-detects project and execution mode |
+| `scripts/agy-local` | Start Claude session locally on current Mac           |
+| `scripts/agy-project` | Start Claude session on TW Mac with job tracking    |
+
+#### Quick Usage
+
+```bash
+# Smart mode - run from any project directory
+cd ~/Development/Projects/myapp
+agy                                    # Auto-detect & start local
+
+# Explicit local
+agy myapp                              # Open existing project
+agy git@github.com:you/repo.git        # Clone + open locally
+agy myapp "Review the auth module"     # Open + send prompt
+
+# Remote (TW Mac) with job tracking
+agy -r myapp "Analyze performance"     # Execute on TW Mac
+agy -r status                          # View all jobs
+agy -r logs <job-id>                   # View job output
+agy -r attach <job-id>                 # Attach to live session
+```
+
+#### How It Works
+
+1. **`agy`** (router): Detects if you're in a project directory. If so, starts locally. Otherwise shows usage.
+2. **`agy-local`**: Clones repo (if URL), runs `project-setup.sh` if present, configures direnv, starts Claude.
+3. **`agy-project`**: Creates tracked job on TW Mac, clones/updates repo, starts Claude in tmux session, supports job management subcommands.
+
+#### Job Management (Remote)
+
+```bash
+agy -r status              # List all jobs with status
+agy -r logs <job-id>       # View setup/execution logs
+agy -r result <job-id>     # Get structured result (if available)
+agy -r attach <job-id>     # Attach to tmux session (Ctrl-b d to detach)
+```
+
 ---
 
 ## Documentation
