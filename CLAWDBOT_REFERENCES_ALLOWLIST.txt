@@ -1,6 +1,35 @@
 # ClawdBot References Allowlist
-# Files that may legitimately reference the old name for historical/documentation purposes
 
-MIGRATION.md
-CLAUDE.md
-CLAWDBOT_REFERENCES_ALLOWLIST.txt
+These files legitimately contain "ClawdBot" references for historical/documentation purposes.
+
+## Documentation (OK to keep references)
+- README.md - "Previously: ClawdBot" section
+- MIGRATION.md - Documents the rename
+- ROLLBACK.md - Rollback instructions reference old name
+
+## Migration Planning (archive after Phase B)
+- PHASE_A_CHECKLIST.md
+- PHASE_A_MECHANICAL_MIGRATION.md
+- RESTRUCTURE_PLAN.md
+- RESTRUCTURE_CHECKLIST.md
+- RESTRUCTURE_CHECKLIST_V2.md
+- RESTRUCTURE_EXECUTION_V2.md
+
+## Agent Instructions (archive after Phase B)
+- AGENT_HANDOFF.md
+- AGENT_HANDOFF_CARD.md
+- AGENT_INSTRUCTIONS.md
+- CLAUDE_CODE_INSTRUCTIONS.md
+
+## Generated Files (OK)
+- DEPENDENCY_INVENTORY.txt - Pre-migration scan
+- MCP_INTEGRATION.md - Integration notes
+- VALIDATION_INSTRUCTIONS.md - Validation docs
+
+## Config (verify)
+- .antigravity/config.json - Check if notification message needs update
+
+## Action Items
+- [ ] Update .antigravity/config.json notification message
+- [ ] Archive planning docs to docs/archive/ in Phase B
+- [ ] Remove DEPENDENCY_INVENTORY.txt after Phase B

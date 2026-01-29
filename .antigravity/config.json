@@ -4,7 +4,7 @@
     "allowDirenv": true,
     "notification": {
       "enabled": true,
-      "message": "ClawdBot MCP environment loaded"
+      "message": "dev-infrastructure MCP environment loaded"
     }
   },
   "mcp": {
