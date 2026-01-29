@@ -42,9 +42,9 @@ $CHANGED_FILES
 Write to: ~/handoffs/response-auto-$TIMESTAMP.md
 EOF
 
-# Dispatch test run in background
+# Dispatch test run in background with auto-cleanup
 SESSION="auto-test-$COMMIT_SHA"
-"$TW_CONTROL" run "tmux new-session -d -s $SESSION 'cd ~/Development/Projects/clawdbot && git pull && npm test 2>&1 | tee /tmp/test-$COMMIT_SHA.log; echo \"Exit: \$?\" >> /tmp/test-$COMMIT_SHA.log'" 2>/dev/null
+"$TW_CONTROL" run "tmux new-session -d -s $SESSION 'cd ~/Development/Projects/clawdbot && git pull && npm test 2>&1 | tee /tmp/test-$COMMIT_SHA.log; echo \"Exit: \$?\" >> /tmp/test-$COMMIT_SHA.log; sleep 5; tmux kill-session -t $SESSION'" 2>/dev/null
 
 # Count changed files for notification
 FILE_COUNT=$(echo "$CHANGED_FILES" | wc -l | tr -d ' ')
