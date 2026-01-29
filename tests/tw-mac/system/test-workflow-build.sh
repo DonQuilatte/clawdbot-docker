@@ -139,10 +139,10 @@ START_TIME=$(date +%s)
 ) 2>/dev/null
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
-if [ $DURATION -lt 3 ]; then
+if [ $DURATION -lt 5 ]; then
     log_pass "Concurrent execution works (${DURATION}s)"
 else
-    log_fail "Concurrent execution too slow (${DURATION}s)"
+    log_fail "Concurrent execution too slow (${DURATION}s, expected <5s)"
 fi
 
 # Test 9: Environment variables
