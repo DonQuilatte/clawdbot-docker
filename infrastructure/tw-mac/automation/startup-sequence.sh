@@ -4,9 +4,20 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_FILE="$HOME/.claude/tw-mac/startup.log"
+LOCK_FILE="$HOME/.claude/tw-mac/startup.lock"
 TW_CONTROL="$HOME/bin/tw"
 
 mkdir -p "$(dirname "$LOG_FILE")"
+
+# Prevent multiple instances
+if [ -f "$LOCK_FILE" ]; then
+    LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+    if kill -0 "$LOCK_PID" 2>/dev/null; then
+        exit 0  # Another instance is running
+    fi
+fi
+echo $$ > "$LOCK_FILE"
+trap "rm -f '$LOCK_FILE'" EXIT
 
 # Only output to terminal if running interactively
 QUIET=${QUIET:-false}
