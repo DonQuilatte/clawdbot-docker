@@ -170,5 +170,3 @@ networks:
 volumes:
   clawdbot-config:
     driver: local
-  clawdbot-logs:
-    driver: local
