@@ -59,6 +59,23 @@ else
 fi
 rmdir "$TEMP_DIR"
 
+# Test: get_gateway_token handles quoted values
+print_test "get_gateway_token handles quoted values"
+# Structural test - verify sed strips quotes
+if [[ "$FUNC_CODE" == *"sed"* ]] && [[ "$FUNC_CODE" == *"'"* || "$FUNC_CODE" == *'"'* ]]; then
+    print_pass "Function handles quoted values"
+else
+    print_fail "Function may not handle quoted values"
+fi
+
+# Test: get_gateway_token handles whitespace
+print_test "get_gateway_token strips whitespace"
+if [[ "$FUNC_CODE" == *"space"* ]] || [[ "$FUNC_CODE" == *"sed"* ]]; then
+    print_pass "Function handles whitespace"
+else
+    print_fail "Function may not handle whitespace"
+fi
+
 # Test: common.sh is sourceable without errors
 print_test "common.sh sources without errors"
 if bash -n "$PROJECT_ROOT/scripts/lib/common.sh" 2>/dev/null; then

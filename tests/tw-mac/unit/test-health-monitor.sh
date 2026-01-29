@@ -63,12 +63,28 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 
-# Test 5: Lock file handling
+# Test 5: Lock file handling with flock (atomic locking)
 echo "--- Test: Lock file handling ---"
-if grep -q "LOCK_FILE" "$HEALTH_MONITOR" && grep -q 'trap.*rm.*LOCK_FILE' "$HEALTH_MONITOR"; then
-    log_pass "Lock file with cleanup trap"
+if grep -q "flock" "$HEALTH_MONITOR" && grep -q 'trap.*rm.*LOCK_FILE' "$HEALTH_MONITOR"; then
+    log_pass "Atomic flock with cleanup trap"
 else
-    log_fail "Lock file cleanup missing"
+    log_fail "Atomic flock or cleanup missing"
+fi
+
+# Test 5b: SSH timeout configuration
+echo "--- Test: SSH timeout ---"
+if grep -q "SSH_TIMEOUT" "$HEALTH_MONITOR" && grep -q "timeout.*SSH_TIMEOUT" "$HEALTH_MONITOR"; then
+    log_pass "SSH timeout configured"
+else
+    log_fail "SSH timeout missing"
+fi
+
+# Test 5c: ServerAliveInterval for keepalive
+echo "--- Test: SSH keepalive ---"
+if grep -q "ServerAliveInterval" "$HEALTH_MONITOR"; then
+    log_pass "SSH keepalive configured"
+else
+    log_fail "SSH keepalive missing"
 fi
 
 # Test 6: Tailscale primary, LAN fallback

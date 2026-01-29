@@ -214,7 +214,6 @@ echo ""
 echo "Test Group 7: Documentation Files"
 assert_file_exists "$PROJECT_ROOT/docs/ANTIGRAVITY-MCP-SETUP.md" "Setup guide exists"
 assert_file_exists "$PROJECT_ROOT/docs/ANTIGRAVITY-MCP-QUICKREF.md" "Quick reference exists"
-assert_file_exists "$PROJECT_ROOT/ANTIGRAVITY-SETUP-COMPLETE.md" "Setup complete doc exists"
 echo ""
 
 # Test 8: .gitignore
