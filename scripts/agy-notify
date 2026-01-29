@@ -1,0 +1,24 @@
+#!/bin/bash
+# agy-notify - Send notifications for job events
+# Usage: agy-notify <title> <message>
+
+TITLE="${1:-Job Notification}"
+MESSAGE="${2:-}"
+
+# macOS notification
+if command -v osascript &>/dev/null; then
+    osascript -e "display notification \"$MESSAGE\" with title \"$TITLE\"" 2>/dev/null || true
+fi
+
+# Log to file
+LOG_FILE="${HOME}/Development/.agy-jobs/notifications.log"
+mkdir -p "$(dirname "$LOG_FILE")"
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $TITLE: $MESSAGE" >> "$LOG_FILE"
+
+# Optional: Slack webhook
+if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+    curl -s -X POST "$SLACK_WEBHOOK_URL" \
+        -H 'Content-Type: application/json' \
+        -d "{\"text\":\"*${TITLE}*\n${MESSAGE}\"}" \
+        >/dev/null 2>&1 || true
+fi

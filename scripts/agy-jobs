@@ -1,0 +1,102 @@
+#!/bin/bash
+# agy-jobs - Job management utility for TW Mac
+# Usage: agy-jobs {status|logs|result} [job-id]
+
+set -e
+
+JOBS_DIR="${HOME}/Development/.agy-jobs"
+
+error() { echo "❌ ERROR: $*" >&2; exit 1; }
+
+case "${1:-}" in
+    status)
+        [ -d "$JOBS_DIR" ] || { echo "No jobs yet"; exit 0; }
+        
+        echo "╔══════════════════════════════════════════════════════════════════════════════╗"
+        printf "║ %-25s %-20s %-15s %-15s ║\n" "JOB ID" "PROJECT" "STATUS" "LAST UPDATE"
+        echo "╠══════════════════════════════════════════════════════════════════════════════╣"
+        
+        for job_dir in "$JOBS_DIR"/*; do
+            [ -d "$job_dir" ] || continue
+            meta="${job_dir}/meta.json"
+            [ -f "$meta" ] || continue
+            
+            job_id=$(basename "$job_dir")
+            project=$(jq -r '.project // "unknown"' "$meta" 2>/dev/null || echo "unknown")
+            status=$(jq -r '.status // "unknown"' "$meta" 2>/dev/null || echo "unknown")
+            last_update=$(jq -r '.last_update // "N/A"' "$meta" 2>/dev/null || echo "N/A")
+            
+            # Truncate for display
+            job_id_short="${job_id:0:25}"
+            project_short="${project:0:20}"
+            last_update_short="${last_update:0:15}"
+            
+            # Color status
+            case "$status" in
+                completed) status_display="✅ ${status}" ;;
+                failed) status_display="❌ ${status}" ;;
+                timeout) status_display="⏱️  ${status}" ;;
+                running) status_display="🔄 ${status}" ;;
+                submitted) status_display="📤 ${status}" ;;
+                *) status_display="${status}" ;;
+            esac
+            
+            printf "║ %-25s %-20s %-20s %-15s ║\n" "$job_id_short" "$project_short" "$status_display" "$last_update_short"
+        done
+        
+        echo "╚══════════════════════════════════════════════════════════════════════════════╝"
+        ;;
+        
+    logs)
+        job_id="${2:-}"
+        [ -n "$job_id" ] || error "Usage: agy-jobs logs <job-id>"
+        
+        log_file="${JOBS_DIR}/${job_id}/job.log"
+        [ -f "$log_file" ] || error "No log file for job ${job_id}"
+        
+        cat "$log_file"
+        ;;
+        
+    result)
+        job_id="${2:-}"
+        [ -n "$job_id" ] || error "Usage: agy-jobs result <job-id>"
+        
+        result_file="${JOBS_DIR}/${job_id}/result.md"
+        meta_file="${JOBS_DIR}/${job_id}/meta.json"
+        
+        if [ ! -f "$result_file" ]; then
+            echo "No result file yet for job ${job_id}"
+            echo ""
+            if [ -f "$meta_file" ]; then
+                status=$(jq -r '.status // "unknown"' "$meta_file")
+                echo "Job status: $status"
+                
+                if [ "$status" = "running" ] || [ "$status" = "submitted" ]; then
+                    echo "Job is still running. Check logs with: agy-jobs logs ${job_id}"
+                fi
+            fi
+            exit 1
+        fi
+        
+        echo "╔══════════════════════════════════════════════════════════════════════════════╗"
+        echo "║ JOB RESULT"
+        echo "╠══════════════════════════════════════════════════════════════════════════════╣"
+        
+        if [ -f "$meta_file" ]; then
+            echo "Job ID:   $(jq -r '.job_id' "$meta_file")"
+            echo "Project:  $(jq -r '.project' "$meta_file")"
+            echo "Status:   $(jq -r '.status' "$meta_file")"
+            echo "Started:  $(jq -r '.start_time' "$meta_file")"
+            echo ""
+        fi
+        
+        cat "$result_file"
+        
+        echo ""
+        echo "╚══════════════════════════════════════════════════════════════════════════════╝"
+        ;;
+        
+    *)
+        error "Usage: agy-jobs {status|logs|result} [job-id]"
+        ;;
+esac

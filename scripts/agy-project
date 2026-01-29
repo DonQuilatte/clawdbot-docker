@@ -1,12 +1,17 @@
 #!/bin/bash
-# agy-project - Single command to engage a project on TW Mac (AntiGravity)
+# agy-project - Enhanced with job tracking, notifications, and structured results
 # Usage: agy-project <repo-url-or-name> [initial-prompt]
+#        agy-project status
+#        agy-project logs <job-id>
+#        agy-project result <job-id>
+#        agy-project attach <job-id>
 
 set -e
 
 TW_CONTROL="$HOME/bin/tw"
 # Use \$HOME so it expands on the remote machine, not locally
 PROJECTS_DIR="\$HOME/Development/Projects"
+JOBS_DIR="\$HOME/Development/.agy-jobs"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -15,6 +20,10 @@ NC='\033[0m'
 
 usage() {
     echo "Usage: agy-project <repo-url-or-name> [initial-prompt]"
+    echo "       agy-project status"
+    echo "       agy-project logs <job-id>"
+    echo "       agy-project result <job-id>"
+    echo "       agy-project attach <job-id>"
     echo ""
     echo "Examples:"
     echo "  agy-project git@github.com:you/myapp.git              # Clone new repo"
@@ -22,14 +31,36 @@ usage() {
     echo "  agy-project myapp                                      # Open existing"
     echo "  agy-project myapp \"Implement feature X\"               # Task existing"
     echo ""
-    echo "Commands after session starts:"
-    echo "  ~/bin/tw run 'tmux capture-pane -t <session> -p | tail -50'  # View output"
-    echo "  ~/bin/tw tmux                                                 # Attach"
-    echo "  ~/bin/tw run 'tmux kill-session -t <session>'                # Kill"
+    echo "Job management:"
+    echo "  agy-project status                  # View all jobs"
+    echo "  agy-project logs <job-id>           # View job logs"
+    echo "  agy-project result <job-id>         # Get structured result"
+    echo "  agy-project attach <job-id>         # Attach to live session"
     exit 1
 }
 
 [ -z "$1" ] && usage
+
+# Handle subcommands
+case "$1" in
+    status)
+        exec "$TW_CONTROL" run "~/bin/agy-jobs status"
+        ;;
+    logs)
+        [ -n "$2" ] || { echo "Error: job-id required"; exit 1; }
+        exec "$TW_CONTROL" run "~/bin/agy-jobs logs '$2'"
+        ;;
+    result)
+        [ -n "$2" ] || { echo "Error: job-id required"; exit 1; }
+        exec "$TW_CONTROL" run "~/bin/agy-jobs result '$2'"
+        ;;
+    attach)
+        [ -n "$2" ] || { echo "Error: job-id required"; exit 1; }
+        echo -e "${YELLOW}Attaching to job $2...${NC}"
+        echo -e "${BLUE}Detach with: Ctrl-b d${NC}"
+        exec "$TW_CONTROL" run "tmux attach-session -t 'agy-$2'"
+        ;;
+esac
 
 INPUT="$1"
 PROMPT="${2:-}"
@@ -50,11 +81,14 @@ if [[ ! "$PROJECT_NAME" =~ ^[a-zA-Z0-9._-]+$ ]]; then
     exit 1
 fi
 
-SESSION_NAME="$PROJECT_NAME"
+# Generate job ID
+JOB_ID="$PROJECT_NAME-$(date +%Y%m%d-%H%M%S)"
+SESSION_NAME="agy-$JOB_ID"
 
-echo -e "${BLUE}=== AntiGravity Project Setup ===${NC}"
-echo -e "Project: ${GREEN}$PROJECT_NAME${NC}"
-echo -e "Session: ${GREEN}$SESSION_NAME${NC}"
+echo -e "${BLUE}=== AntiGravity Project Setup (Job-Tracked) ===${NC}"
+echo -e "Job ID:   ${GREEN}$JOB_ID${NC}"
+echo -e "Project:  ${GREEN}$PROJECT_NAME${NC}"
+echo -e "Session:  ${GREEN}$SESSION_NAME${NC}"
 echo ""
 
 # Check TW Mac connectivity
@@ -66,78 +100,198 @@ if ! "$TW_CONTROL" run 'echo ok' >/dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓ TW Mac connected${NC}"
 
+# Escape prompt for safe transmission (both for shell and sed)
+# First escape backslashes, then &, then /, then single quotes
+ESCAPED_PROMPT=$(printf '%s' "$PROMPT" | sed -e 's/\\/\\\\/g' -e 's/&/\\&/g' -e 's|/|\\/|g' -e "s/'/'\\\\''/g")
+
+# Create job execution script on TW Mac
+echo -e "${YELLOW}Creating job wrapper...${NC}"
+
+"$TW_CONTROL" run "cat > /tmp/agy-job-${JOB_ID}.sh && chmod +x /tmp/agy-job-${JOB_ID}.sh" << 'EOJOB'
+#!/bin/bash
+set -e
+
+JOB_ID="__JOB_ID__"
+PROJECT_NAME="__PROJECT_NAME__"
+INPUT="__INPUT__"
+IS_URL="__IS_URL__"
+SESSION_NAME="__SESSION_NAME__"
+PROMPT='__PROMPT__'
+PROJECTS_DIR="__PROJECTS_DIR__"
+JOBS_DIR="__JOBS_DIR__"
+
+# Create job directory
+mkdir -p "${JOBS_DIR}/${JOB_ID}"
+
+# Create metadata
+cat > "${JOBS_DIR}/${JOB_ID}/meta.json" << 'EOMETA'
+{
+  "job_id": "__JOB_ID__",
+  "project": "__PROJECT_NAME__",
+  "status": "submitted",
+  "start_time": "__START_TIME__",
+  "tmux_session": "__SESSION_NAME__"
+}
+EOMETA
+
+# Redirect to log file
+exec > "${JOBS_DIR}/${JOB_ID}/job.log" 2>&1
+
+echo "=== JOB START: ${JOB_ID} ==="
+echo "Project: ${PROJECT_NAME}"
+echo "Time: $(date)"
+echo ""
+
+# Update status function
+update_status() {
+    local status="$1"
+    jq --arg status "$status" --arg time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '.status = $status | .last_update = $time' \
+        "${JOBS_DIR}/${JOB_ID}/meta.json" > "${JOBS_DIR}/${JOB_ID}/meta.json.tmp"
+    mv "${JOBS_DIR}/${JOB_ID}/meta.json.tmp" "${JOBS_DIR}/${JOB_ID}/meta.json"
+}
+
+fail_job() {
+    update_status "failed"
+    echo "❌ FAILED: $1"
+    exit 1
+}
+
+update_status "running"
+
 # Clone or verify project exists
-if [ "$IS_URL" = true ]; then
-    echo -e "${YELLOW}Checking if project exists...${NC}"
-    if "$TW_CONTROL" run "[ -d \"$PROJECTS_DIR/$PROJECT_NAME\" ]" 2>/dev/null; then
-        echo -e "${GREEN}✓ Project already exists, pulling latest...${NC}"
-        "$TW_CONTROL" run "cd \"$PROJECTS_DIR/$PROJECT_NAME\" && git pull" 2>/dev/null || echo -e "${YELLOW}Warning: git pull failed${NC}"
+if [ "$IS_URL" = "true" ]; then
+    echo "🔹 Checking if project exists..."
+    if [ -d "${PROJECTS_DIR}/${PROJECT_NAME}" ]; then
+        echo "✓ Project already exists, pulling latest..."
+        cd "${PROJECTS_DIR}/${PROJECT_NAME}"
+        git pull 2>&1 || echo "⚠️  Warning: git pull failed"
     else
-        echo -e "${YELLOW}Cloning repository...${NC}"
-        "$TW_CONTROL" run "cd \"$PROJECTS_DIR\" && git clone '$INPUT'"
-        echo -e "${GREEN}✓ Repository cloned${NC}"
+        echo "🔹 Cloning repository..."
+        cd "${PROJECTS_DIR}"
+        git clone "$INPUT" 2>&1 || fail_job "Git clone failed"
+        echo "✓ Repository cloned"
     fi
 else
-    echo -e "${YELLOW}Verifying project exists...${NC}"
-    if ! "$TW_CONTROL" run "[ -d \"$PROJECTS_DIR/$PROJECT_NAME\" ]" 2>/dev/null; then
-        echo -e "${RED}Error: Project '$PROJECT_NAME' not found in $PROJECTS_DIR${NC}"
-        echo "Available projects:"
-        "$TW_CONTROL" run "ls -1 \"$PROJECTS_DIR\"" 2>/dev/null | sed 's/^/  /'
-        exit 1
+    if [ ! -d "${PROJECTS_DIR}/${PROJECT_NAME}" ]; then
+        fail_job "Project '${PROJECT_NAME}' not found in ${PROJECTS_DIR}"
     fi
-    echo -e "${GREEN}✓ Project found${NC}"
+    echo "✓ Project found"
 fi
 
 # Run project-setup.sh if exists
-echo -e "${YELLOW}Checking for project setup script...${NC}"
-if "$TW_CONTROL" run "[ -x \"$PROJECTS_DIR/$PROJECT_NAME/scripts/project-setup.sh\" ]" 2>/dev/null; then
-    echo -e "${YELLOW}Running project-setup.sh...${NC}"
-    "$TW_CONTROL" run "cd \"$PROJECTS_DIR/$PROJECT_NAME\" && ./scripts/project-setup.sh" 2>/dev/null || echo -e "${YELLOW}Warning: project-setup.sh failed${NC}"
-    echo -e "${GREEN}✓ Setup complete${NC}"
+echo "🔹 Checking for project setup script..."
+if [ -x "${PROJECTS_DIR}/${PROJECT_NAME}/scripts/project-setup.sh" ]; then
+    echo "🔹 Running project-setup.sh..."
+    cd "${PROJECTS_DIR}/${PROJECT_NAME}"
+    if timeout 60s ./scripts/project-setup.sh 2>&1; then
+        echo "✓ Setup complete"
+    else
+        echo "⚠️  Warning: project-setup.sh failed or timed out"
+    fi
 else
-    echo -e "${BLUE}No setup script found (optional)${NC}"
+    echo "ℹ️  No setup script found (optional)"
 fi
 
 # Setup direnv if .envrc exists
-if "$TW_CONTROL" run "[ -f \"$PROJECTS_DIR/$PROJECT_NAME/.envrc\" ]" 2>/dev/null; then
-    echo -e "${YELLOW}Configuring direnv...${NC}"
-    "$TW_CONTROL" run "cd \"$PROJECTS_DIR/$PROJECT_NAME\" && direnv allow" 2>/dev/null || echo -e "${YELLOW}Warning: direnv allow failed${NC}"
+if [ -f "${PROJECTS_DIR}/${PROJECT_NAME}/.envrc" ]; then
+    echo "🔹 Configuring direnv..."
+    cd "${PROJECTS_DIR}/${PROJECT_NAME}"
+    direnv allow 2>&1 || echo "⚠️  Warning: direnv allow failed"
 fi
 
 # Check if session already exists
-echo -e "${YELLOW}Setting up tmux session...${NC}"
-if "$TW_CONTROL" run "tmux has-session -t '$SESSION_NAME'" 2>/dev/null; then
-    echo -e "${BLUE}Session '$SESSION_NAME' already exists${NC}"
+echo "🔹 Setting up tmux session..."
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "ℹ️  Session '$SESSION_NAME' already exists (reusing)"
 else
-    "$TW_CONTROL" run "tmux new-session -d -s '$SESSION_NAME' -c \"$PROJECTS_DIR/$PROJECT_NAME\" claude"
-    echo -e "${GREEN}✓ Session created${NC}"
-    echo -e "${YELLOW}Waiting for Claude to initialize...${NC}"
-    # Poll for session readiness instead of arbitrary sleep
+    # Start tmux with bash to avoid zshrc's 1Password integration issues
+    tmux new-session -d -s "$SESSION_NAME" "cd '${PROJECTS_DIR}/${PROJECT_NAME}' && exec /bin/bash --login"
+    echo "✓ Session created"
+
+    # Wait for bash prompt
+    echo "🔹 Waiting for shell..."
     for i in {1..10}; do
-        if "$TW_CONTROL" run "tmux list-panes -t '$SESSION_NAME'" 2>/dev/null; then
+        pane_content=$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | tail -2)
+        if echo "$pane_content" | grep -qE '(\$|>)\s*$'; then
             break
         fi
         sleep 1
     done
+
+    # Source nvm and start Claude (full path ensures no shell alias interference)
+    tmux send-keys -t "$SESSION_NAME" 'export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; claude' Enter
+    echo "✓ Claude started"
+
+    # Wait for Claude to initialize
+    for i in {1..15}; do
+        pane_content=$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | tail -3)
+        if echo "$pane_content" | grep -qiE '(claude|project|working)'; then
+            break
+        fi
+        sleep 1
+    done
+    sleep 2
 fi
 
 # Send prompt if provided
 if [ -n "$PROMPT" ]; then
-    echo -e "${YELLOW}Sending prompt...${NC}"
-    # Escape special characters in prompt for safe transmission
-    ESCAPED_PROMPT=$(printf '%s' "$PROMPT" | sed "s/'/'\\\\''/g")
-    "$TW_CONTROL" run "tmux send-keys -t '$SESSION_NAME' -l '$ESCAPED_PROMPT'"
-    "$TW_CONTROL" run "tmux send-keys -t '$SESSION_NAME' Enter"
-    echo -e "${GREEN}✓ Prompt sent${NC}"
+    echo "🔹 Sending prompt..."
+    tmux send-keys -t "$SESSION_NAME" -l "$PROMPT"
+    tmux send-keys -t "$SESSION_NAME" Enter
+    echo "✓ Prompt sent"
+fi
+
+update_status "running"
+
+# Send notification
+if command -v ~/bin/agy-notify &>/dev/null; then
+    ~/bin/agy-notify "Job ${JOB_ID} started" "${PROJECT_NAME}" || true
 fi
 
 echo ""
-echo -e "${GREEN}=== Session Ready ===${NC}"
+echo "✓ Job running"
+echo "=== END SETUP ==="
+EOJOB
+
+# Substitute variables in the heredoc we just sent
+"$TW_CONTROL" run "sed -i.bak \
+    -e 's|__JOB_ID__|${JOB_ID}|g' \
+    -e 's|__PROJECT_NAME__|${PROJECT_NAME}|g' \
+    -e 's|__INPUT__|${INPUT}|g' \
+    -e 's|__IS_URL__|${IS_URL}|g' \
+    -e 's|__SESSION_NAME__|${SESSION_NAME}|g' \
+    -e 's|__PROMPT__|${ESCAPED_PROMPT}|g' \
+    -e 's|__PROJECTS_DIR__|${PROJECTS_DIR}|g' \
+    -e 's|__JOBS_DIR__|${JOBS_DIR}|g' \
+    -e 's|__START_TIME__|$(date -u +%Y-%m-%dT%H:%M:%SZ)|g' \
+    /tmp/agy-job-${JOB_ID}.sh"
+
+# Execute job in background
+echo -e "${YELLOW}Submitting job to TW Mac...${NC}"
+"$TW_CONTROL" run "nohup /tmp/agy-job-${JOB_ID}.sh > /dev/null 2>&1 &"
+
+# Wait for job metadata to be created
+echo -e "${YELLOW}Verifying job submission...${NC}"
+for i in {1..10}; do
+    if "$TW_CONTROL" run "[ -f ${JOBS_DIR}/${JOB_ID}/meta.json ]" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+echo ""
+echo -e "${GREEN}=== Job Submitted ===${NC}"
+echo -e "Job ID:  ${BLUE}$JOB_ID${NC}"
 echo -e "Project: ${BLUE}$PROJECT_NAME${NC}"
-echo -e "Session: ${BLUE}$SESSION_NAME${NC}"
 echo ""
 echo -e "${YELLOW}Quick commands:${NC}"
-echo "  View output:  ~/bin/tw run 'tmux capture-pane -t \"$SESSION_NAME\" -p | tail -50'"
-echo "  Attach:       ~/bin/tw tmux  # then Ctrl-b, s to select"
-echo "  Send task:    ~/bin/tw run 'tmux send-keys -t \"$SESSION_NAME\" -l \"your prompt\" && tmux send-keys -t \"$SESSION_NAME\" Enter'"
-echo "  Kill:         ~/bin/tw run 'tmux kill-session -t \"$SESSION_NAME\"'"
+echo "  Status:   agy-project status"
+echo "  Logs:     agy-project logs $JOB_ID"
+echo "  Result:   agy-project result $JOB_ID"
+echo "  Attach:   agy-project attach $JOB_ID"
+echo ""
+echo -e "${YELLOW}Legacy tmux commands (if needed):${NC}"
+echo "  View:     ~/bin/tw run 'tmux capture-pane -t \"$SESSION_NAME\" -p | tail -50'"
+echo "  Attach:   ~/bin/tw tmux  # then Ctrl-b, s to select"
+echo "  Kill:     ~/bin/tw run 'tmux kill-session -t \"$SESSION_NAME\"'"
