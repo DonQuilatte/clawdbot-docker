@@ -49,7 +49,7 @@ echo ""
 
 # Test 1: TW Mac Docker accessible
 echo "--- Test: TW Mac Docker accessibility ---"
-DOCKER_OK=$(ssh $SSH_OPTS $TW_HOST 'docker info >/dev/null 2>&1 && echo "ok"' 2>/dev/null || echo "")
+DOCKER_OK=$(ssh $SSH_OPTS $TW_HOST 'docker info >/dev/null 2>&1 && echo "ok"' 2>&1 | grep -o "ok" || echo "")
 if [ "$DOCKER_OK" = "ok" ]; then
     log_pass "Docker accessible on TW Mac"
 else

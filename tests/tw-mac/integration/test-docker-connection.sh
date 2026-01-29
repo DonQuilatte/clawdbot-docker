@@ -35,7 +35,7 @@ echo ""
 
 # Test 1: Docker daemon running
 echo "--- Test: Docker daemon running ---"
-DOCKER_INFO=$(ssh $SSH_OPTS $TW_HOST 'docker info --format "{{.ServerVersion}}" 2>/dev/null' 2>/dev/null || echo "")
+DOCKER_INFO=$(ssh $SSH_OPTS $TW_HOST 'docker info --format "{{.ServerVersion}}"' 2>&1 | grep -E '^[0-9]+\.' || echo "")
 if [ -n "$DOCKER_INFO" ]; then
     log_pass "Docker daemon running: v$DOCKER_INFO"
 else
@@ -130,6 +130,7 @@ fi
 echo "--- Test: Container cleanup ---"
 ssh $SSH_OPTS $TW_HOST 'docker container prune -f 2>/dev/null' >/dev/null 2>&1
 CONTAINER_COUNT=$(ssh $SSH_OPTS $TW_HOST 'docker ps -aq | wc -l' 2>/dev/null | tr -d ' ')
+CONTAINER_COUNT=${CONTAINER_COUNT:-0}
 if [ "$CONTAINER_COUNT" -lt 10 ]; then
     log_pass "No orphaned containers (count: $CONTAINER_COUNT)"
 else
