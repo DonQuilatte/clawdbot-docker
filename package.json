@@ -1,0 +1,45 @@
+{
+  "name": "clawdbot-deployment",
+  "version": "1.0.0",
+  "description": "Security-hardened Docker deployment for Clawdbot messaging gateway",
+  "private": true,
+  "scripts": {
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "shellcheck scripts/**/*.sh tests/**/*.sh",
+    "preflight": "./config/preflight-check.sh",
+    "deploy": "./scripts/deploy-secure.sh",
+    "verify": "./scripts/verify-security.sh"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "yaml": "^2.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/unit/**/*.test.js"
+    ],
+    "verbose": true,
+    "collectCoverageFrom": [
+      "tests/**/*.js",
+      "!tests/**/*.test.js"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clawdbot/clawdbot-deployment"
+  },
+  "keywords": [
+    "clawdbot",
+    "docker",
+    "deployment",
+    "security"
+  ],
+  "license": "MIT"
+}

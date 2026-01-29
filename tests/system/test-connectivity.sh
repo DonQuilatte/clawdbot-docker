@@ -7,11 +7,15 @@ PROJECT_ROOT="${PROJECT_ROOT:-$(dirname "$(dirname "$SCRIPT_DIR")")}"
 # Source test utilities
 source "$SCRIPT_DIR/../lib/test-utils.sh"
 
-# Configuration
-MAIN_MAC_IP="192.168.1.230"
-REMOTE_MAC_IP="192.168.1.245"
-REMOTE_USER="tywhitaker"
-GATEWAY_PORT="18789"
+# Load environment and configuration
+source "$PROJECT_ROOT/scripts/lib/common.sh"
+load_env
+
+# Configuration from environment (with defaults for backwards compatibility)
+MAIN_MAC_IP="${GATEWAY_IP:-${MAIN_MAC_IP:-192.168.1.230}}"
+REMOTE_MAC_IP="${REMOTE_HOST:-${REMOTE_MAC_IP:-192.168.1.245}}"
+REMOTE_USER="${REMOTE_USER:-tywhitaker}"
+GATEWAY_PORT="${GATEWAY_PORT:-18789}"
 
 echo "Testing distributed system connectivity..."
 

@@ -5,17 +5,14 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 TOTAL_PASS=0
 TOTAL_FAIL=0
 TOTAL_SKIP=0
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
+# Source common library for colors and shared functions
+# shellcheck source=../../scripts/lib/common.sh
+source "$PROJECT_ROOT/scripts/lib/common.sh"
 
 usage() {
     echo "TW Mac Infrastructure Test Runner"

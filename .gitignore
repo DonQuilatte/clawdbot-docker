@@ -5,6 +5,7 @@
 
 # macOS
 .DS_Store
+**/.DS_Store
 
 # Logs
 *.log
@@ -24,6 +25,13 @@ deployment*.log
 .vscode/
 .idea/
 *.iml
+.cursor/
+
+# Node.js
+node_modules/
+coverage/
+*.tgz
+.npm/
 
 # 1Password cache
 .op/
@@ -37,3 +45,7 @@ deployment*.log
 
 # Antigravity MCP
 .antigravity/*.backup*
+
+# Test artifacts
+test-reports/
+*.junit.xml

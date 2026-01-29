@@ -8,12 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 export PROJECT_ROOT
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Source common library for colors and shared functions
+# shellcheck source=../scripts/lib/common.sh
+source "$PROJECT_ROOT/scripts/lib/common.sh"
 
 # Counters
 TESTS_RUN=0
