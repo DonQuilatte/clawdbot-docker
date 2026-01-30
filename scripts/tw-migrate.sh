@@ -4,8 +4,14 @@
 
 set -e
 
-TW_HOST="tywhitaker@tw.local"
-TW_IP="100.81.110.81"  # Tailscale IP fallback
+# Use same SSH config as ~/bin/tw
+TW_HOST="tw"  # SSH config alias
+SSH_KEY="$HOME/.ssh/id_ed25519_clawdbot"
+SSH_OPTS="-o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=10"
+
+if [ -f "$SSH_KEY" ]; then
+    SSH_OPTS="$SSH_OPTS -i $SSH_KEY"
+fi
 
 echo "TW Mac Migration: clawdbot → dev-infra"
 echo "======================================="
@@ -13,10 +19,8 @@ echo ""
 
 # Try to connect
 echo "Connecting to TW Mac..."
-if ssh -o ConnectTimeout=5 "$TW_HOST" "echo ok" >/dev/null 2>&1; then
+if SSH_AUTH_SOCK="" ssh $SSH_OPTS "$TW_HOST" "echo ok" >/dev/null 2>&1; then
     TARGET="$TW_HOST"
-elif ssh -o ConnectTimeout=5 "tywhitaker@$TW_IP" "echo ok" >/dev/null 2>&1; then
-    TARGET="tywhitaker@$TW_IP"
 else
     echo "ERROR: Cannot connect to TW Mac"
     echo "Check: ~/bin/tw status"
@@ -28,7 +32,7 @@ echo ""
 
 # Step 1: Ensure repo exists and is updated
 echo "Step 1: Updating repository on TW Mac..."
-ssh "$TARGET" << 'REMOTE_SCRIPT'
+SSH_AUTH_SOCK="" ssh $SSH_OPTS "$TARGET" << 'REMOTE_SCRIPT'
 set -e
 PROJECT_DIR="$HOME/Development/Projects/dev-infra"
 OLD_DIR="$HOME/Development/Projects/clawdbot"
@@ -64,7 +68,7 @@ REMOTE_SCRIPT
 
 echo ""
 echo "Step 2: Running migration script..."
-ssh "$TARGET" "cd ~/Development/Projects/dev-infra && ./infrastructure/tw-mac/migrate-to-dev-infra.sh"
+SSH_AUTH_SOCK="" ssh $SSH_OPTS "$TARGET" "cd ~/Development/Projects/dev-infra && ./infrastructure/tw-mac/migrate-to-dev-infra.sh"
 
 echo ""
 echo "Step 3: Verifying from Controller Mac..."
