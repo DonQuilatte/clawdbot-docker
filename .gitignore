@@ -49,3 +49,4 @@ coverage/
 # Test artifacts
 test-reports/
 *.junit.xml
+.upstream/
