@@ -46,14 +46,26 @@ if [ $# -eq 0 ]; then
     fi
 fi
 
-# With arguments - check for flags
-if [[ "$1" == "-r" || "$1" == "--remote" ]]; then
-    shift
-    exec "$(dirname "$0")/agy-project" "$@"
-elif [[ "$1" == "-l" || "$1" == "--local" ]]; then
-    shift
-    exec "$(dirname "$0")/agy-local" "$@"
-else
-    # Default to local
-    exec "$(dirname "$0")/agy-local" "$@"
-fi
+# With arguments - check for flags and subcommands
+case "$1" in
+    -r|--remote)
+        shift
+        exec "$(dirname "$0")/agy-project" "$@"
+        ;;
+    -l|--local)
+        shift
+        exec "$(dirname "$0")/agy-local" "$@"
+        ;;
+    dependabot|deps)
+        shift
+        exec bun run "$(dirname "$0")/dependabot-triage.ts" "$@"
+        ;;
+    manifest)
+        echo "manifest command not yet implemented"
+        exit 1
+        ;;
+    *)
+        # Default to local
+        exec "$(dirname "$0")/agy-local" "$@"
+        ;;
+esac
