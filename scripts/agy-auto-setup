@@ -134,6 +134,18 @@ check_mcp_health() {
 
     log "  Found MCP config: $mcp_config"
 
+    # Sync MCP config (Phase 3: Dynamic Registration)
+    if [ -x "scripts/agy-sync-mcp" ]; then
+        log "  Syncing MCP config..."
+        ./scripts/agy-sync-mcp >> "$LOG_FILE" 2>&1 || true
+    fi
+
+    # Run the comprehensive health check script
+    if [ -x "scripts/agy-health-check" ]; then
+        log "  Running detailed health check..."
+        ./scripts/agy-health-check >> "$LOG_FILE" 2>&1 || true
+    fi
+
     # Count configured servers
     local server_count
     server_count=$(jq '.mcpServers | length' "$mcp_config" 2>/dev/null || echo 0)

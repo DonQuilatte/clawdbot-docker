@@ -1,0 +1,61 @@
+#!/bin/bash
+# agy-sync-mcp - Sync project MCP config with Antigravity global config
+# Resolves absolute paths and updates ~/.gemini/mcp_config.json
+#
+# Part of Path 3: Zero-Command Integration
+
+set -euo pipefail
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+LOG_FILE="/tmp/agy-sync-mcp-$(date +%Y%m%d).log"
+log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"; }
+
+PROJECT_ROOT="${PROJECT_ROOT:-$(pwd)}"
+# Ensure PROJECT_ROOT is absolute and handle tilde
+if [[ "$PROJECT_ROOT" == "~"* ]]; then
+    PROJECT_ROOT="${HOME}${PROJECT_ROOT:1}"
+fi
+PROJECT_ROOT=$(cd "$PROJECT_ROOT" && pwd)
+CONFIG_FILE="$PROJECT_ROOT/.antigravity/config.json"
+TARGET_CONFIG="$PROJECT_ROOT/.antigravity/mcp_config.json"
+GLOBAL_MCP_LINK="$HOME/.gemini/mcp_config.json"
+
+log "Syncing MCP for $PROJECT_ROOT"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "No .antigravity/config.json found"
+    exit 0
+fi
+
+# 1. Generate absolute path config
+log "Generating absolute path config"
+
+# Extract servers and replace ${workspaceFolder} with actual path
+# Also add project suffix to avoid collisions in global list
+PROJECT_NAME=$(jq -r '.project.name' "$CONFIG_FILE")
+
+jq --arg root "$PROJECT_ROOT" --arg suffix "$PROJECT_NAME" '
+  .mcp.servers | with_entries(
+    .key = "\(.key)-\($suffix)" |
+    .value.args = (.value.args | map(gsub("\\${workspaceFolder}"; $root)))
+  ) | { mcpServers: . }
+' "$CONFIG_FILE" > "$TARGET_CONFIG"
+
+echo -e "${GREEN}Generated:${NC} .antigravity/mcp_config.json"
+
+# 2. Update global symlink
+mkdir -p "$HOME/.gemini"
+
+if [ -L "$GLOBAL_MCP_LINK" ] || [ -f "$GLOBAL_MCP_LINK" ]; then
+    rm "$GLOBAL_MCP_LINK"
+fi
+
+ln -s "$TARGET_CONFIG" "$GLOBAL_MCP_LINK"
+log "Symlinked to $GLOBAL_MCP_LINK"
+
+echo -e "${GREEN}Synced:${NC} Antigravity MCP now using this project"
+echo -e "${BLUE}Restart Antigravity IDE to apply changes.${NC}"

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "gitkraken-dev-infra": {
+      "command": "bash",
+      "args": [
+        "/Users/jederlichman/Development/Projects/dev-infra/scripts/mcp-gitkraken"
+      ]
+    },
+    "filesystem-dev-infra": {
+      "command": "bash",
+      "args": [
+        "/Users/jederlichman/Development/Projects/dev-infra/scripts/mcp-filesystem"
+      ]
+    }
+  }
+}
