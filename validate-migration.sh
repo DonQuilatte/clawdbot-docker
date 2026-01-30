@@ -22,17 +22,17 @@ WARN_COUNT=0
 # Helper functions
 pass() {
     echo -e "${GREEN}✅ PASS${NC}: $1"
-    ((PASS_COUNT++))
+    ((PASS_COUNT++)) || true
 }
 
 fail() {
     echo -e "${RED}❌ FAIL${NC}: $1"
-    ((FAIL_COUNT++))
+    ((FAIL_COUNT++)) || true
 }
 
 warn() {
     echo -e "${YELLOW}⚠️  WARN${NC}: $1"
-    ((WARN_COUNT++))
+    ((WARN_COUNT++)) || true
 }
 
 # Test 1: Repository renamed
@@ -40,10 +40,10 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Test 1: Repository Renamed"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-if [ -d "/Users/jederlichman/Development/Projects/dev-infrastructure" ]; then
-    pass "dev-infrastructure directory exists"
+if [ -d "/Users/jederlichman/Development/Projects/dev-infra" ]; then
+    pass "dev-infra directory exists"
 else
-    fail "dev-infrastructure directory not found"
+    fail "dev-infra directory not found"
 fi
 
 if [ -d "/Users/jederlichman/Development/Projects/ClawdBot" ]; then
@@ -59,26 +59,26 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Test 2: mcp-deployment Consolidated"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-if [ -d "/Users/jederlichman/Development/Projects/dev-infrastructure/mcp" ]; then
+if [ -d "/Users/jederlichman/Development/Projects/dev-infra/mcp" ]; then
     pass "mcp/ directory exists"
 else
     fail "mcp/ directory not found"
 fi
 
-if [ -f "/Users/jederlichman/Development/Projects/dev-infrastructure/mcp/scripts/project-setup.sh" ]; then
+if [ -f "/Users/jederlichman/Development/Projects/dev-infra/mcp/scripts/project-setup.sh" ]; then
     pass "mcp/scripts/project-setup.sh exists"
 else
     fail "mcp/scripts/project-setup.sh not found"
 fi
 
-if [ -f "/Users/jederlichman/Development/Projects/dev-infrastructure/mcp/README.md" ]; then
+if [ -f "/Users/jederlichman/Development/Projects/dev-infra/mcp/README.md" ]; then
     pass "mcp/README.md exists"
 else
     fail "mcp/README.md not found"
 fi
 
 # Count files in mcp/
-MCP_FILE_COUNT=$(find /Users/jederlichman/Development/Projects/dev-infrastructure/mcp -type f 2>/dev/null | wc -l | xargs)
+MCP_FILE_COUNT=$(find /Users/jederlichman/Development/Projects/dev-infra/mcp -type f 2>/dev/null | wc -l | xargs)
 if [ "$MCP_FILE_COUNT" -gt 5 ]; then
     pass "mcp/ contains $MCP_FILE_COUNT files (sufficient content)"
 else
@@ -92,7 +92,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Test 3: Path References Updated"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-cd /Users/jederlichman/Development/Projects/dev-infrastructure
+cd /Users/jederlichman/Development/Projects/dev-infra
 
 # Check for old mcp-deployment references
 OLD_MCP_REFS=$(grep -r "/Users/jederlichman/Development/mcp-deployment" . \
@@ -147,10 +147,10 @@ if git rev-parse --git-dir > /dev/null 2>&1; then
     
     # Check if on migration branch
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-    if [ "$CURRENT_BRANCH" = "phase-a-mechanical-migration" ]; then
-        pass "On phase-a-mechanical-migration branch"
+    if [ "$CURRENT_BRANCH" = "phase-a-mechanical-migration" ] || [ "$CURRENT_BRANCH" = "main" ]; then
+        pass "On branch '$CURRENT_BRANCH'"
     else
-        warn "On branch '$CURRENT_BRANCH' (expected: phase-a-mechanical-migration)"
+        warn "On branch '$CURRENT_BRANCH' (expected: phase-a-mechanical-migration or main)"
     fi
     
     # Check for v2.0.0-alpha tag
@@ -179,10 +179,10 @@ echo "Test 5: Documentation Updated"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if [ -f "README.md" ]; then
-    if grep -q "dev-infrastructure" README.md; then
-        pass "README.md mentions dev-infrastructure"
+    if grep -q "dev-infra" README.md; then
+        pass "README.md mentions dev-infra"
     else
-        fail "README.md does not mention dev-infrastructure"
+        fail "README.md does not mention dev-infra"
     fi
     
     if grep -q "ClawdBot" README.md && grep -q "Previously" README.md; then
@@ -197,7 +197,7 @@ fi
 if [ -f "MIGRATION.md" ]; then
     pass "MIGRATION.md exists"
     
-    if grep -q "ClawdBot" MIGRATION.md && grep -q "dev-infrastructure" MIGRATION.md; then
+    if grep -q "ClawdBot" MIGRATION.md && grep -q "dev-infra" MIGRATION.md; then
         pass "MIGRATION.md documents rename"
     else
         fail "MIGRATION.md missing rename documentation"
@@ -213,17 +213,17 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Test 6: Clean Checkout Test"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-TEST_DIR="/tmp/dev-infrastructure-validation-$$"
+TEST_DIR="/tmp/dev-infra-validation-$$"
 if [ -d "$TEST_DIR" ]; then
     rm -rf "$TEST_DIR"
 fi
 
 echo "Cloning to temporary directory: $TEST_DIR"
-if git clone /Users/jederlichman/Development/Projects/dev-infrastructure "$TEST_DIR" > /dev/null 2>&1; then
+if git clone /Users/jederlichman/Development/Projects/dev-infra "$TEST_DIR" > /dev/null 2>&1; then
     pass "Repository can be cloned"
     
     cd "$TEST_DIR"
-    git checkout phase-a-mechanical-migration > /dev/null 2>&1
+    git checkout "$CURRENT_BRANCH" > /dev/null 2>&1
     
     if [ -f "mcp/scripts/project-setup.sh" ]; then
         pass "project-setup.sh exists in clean checkout"
@@ -253,7 +253,7 @@ mkdir -p "$TEST_PROJECT"
 cd "$TEST_PROJECT"
 
 echo "Deploying to test project: $TEST_PROJECT"
-if bash /Users/jederlichman/Development/Projects/dev-infrastructure/mcp/scripts/project-setup.sh test-migration > /dev/null 2>&1; then
+if yes "" | bash /Users/jederlichman/Development/Projects/dev-infra/mcp/scripts/project-setup.sh test-migration > /dev/null 2>&1; then
     pass "Deployment script executed"
     
     # Check created files
@@ -365,7 +365,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "Test 10: Rollback Readiness"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-if [ -f "/Users/jederlichman/Development/Projects/dev-infrastructure/ROLLBACK.md" ]; then
+if [ -f "/Users/jederlichman/Development/Projects/dev-infra/ROLLBACK.md" ]; then
     pass "ROLLBACK.md exists"
 else
     warn "ROLLBACK.md not found"

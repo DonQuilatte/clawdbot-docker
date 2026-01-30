@@ -1,6 +1,6 @@
 #!/bin/bash
 # scripts/lib/common.sh
-# Common infrastructure functions for Clawdbot.
+# Common infrastructure functions for dev-infra.
 
 #------------------------------------------------------------------------------
 # Color Definitions (centralized - source this file instead of duplicating)

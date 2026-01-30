@@ -1,7 +1,7 @@
 {
-  "name": "clawdbot-deployment",
+  "name": "dev-infra",
   "version": "1.0.0",
-  "description": "Security-hardened Docker deployment for Clawdbot messaging gateway",
+  "description": "Distributed development infrastructure for Mac environments with ClawdBot gateway deployment",
   "private": true,
   "scripts": {
     "test": "jest",
@@ -35,13 +35,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/clawdbot/clawdbot-deployment"
+    "url": "https://github.com/DonQuilatte/dev-infra"
   },
   "keywords": [
-    "clawdbot",
+    "infrastructure",
     "docker",
     "deployment",
-    "security"
+    "distributed",
+    "clawdbot"
   ],
   "license": "MIT"
 }

@@ -1,5 +1,5 @@
 # AGY Shell Integration - Auto-detect projects
-# Source this file in ~/.zshrc: source ~/Development/Projects/clawdbot/scripts/agy-shell-integration.sh
+# Source this file in ~/.zshrc: source ~/Development/Projects/dev-infra/scripts/agy-shell-integration.sh
 
 # Auto-engage when entering a project directory
 agy_auto_engage() {

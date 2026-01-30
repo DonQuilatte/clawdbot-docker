@@ -1,19 +1,21 @@
 # Migration Guide
 
-## ClawdBot → dev-infrastructure
+## ClawdBot → dev-infra
 
-**Renamed:** 2026-01-29
+**Renamed:** 2026-01-30
 
 ### Path Changes
 
 | Old Path | New Path |
 |----------|----------|
-| `~/Development/Projects/ClawdBot` | `~/Development/Projects/dev-infrastructure` |
-| `~/Development/mcp-deployment` | `~/Development/Projects/dev-infrastructure/mcp` |
+| `~/Development/Projects/ClawdBot` | `~/Development/Projects/dev-infra` |
+| `~/Development/Projects/dev-infrastructure` | `~/Development/Projects/dev-infra` |
+| `~/Development/mcp-deployment` | `~/Development/Projects/dev-infra/mcp` |
 
-### Transition Symlink
+### Naming Convention
 
-A symlink exists at `~/Development/mcp-deployment-redirect` pointing to the new location.
+- **dev-infra**: This infrastructure/deployment repo
+- **ClawdBot**: The messaging gateway software (Docker containers, images, env vars)
 
 ### Rollback
 

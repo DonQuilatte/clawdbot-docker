@@ -1,8 +1,8 @@
-# Claude Rules: Clawdbot Deployment
+# Claude Rules: Dev-Infra
 
 ## Project Overview
 
-**Purpose:** Enterprise-grade Docker security hardening and distributed Mac setup for Clawdbot messaging gateway
+**Purpose:** Distributed development infrastructure for Mac environments, including ClawdBot messaging gateway deployment
 
 **Architecture:**
 - Main Mac (192.168.1.230): Gateway/Controller
@@ -65,7 +65,7 @@ CLAWDBOT_GATEWAY_TOKEN=op://Private/Clawdbot Gateway Token/token
 ### Common Tasks
 ```bash
 # Local development
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 agy                              # Start Claude locally
 
 # Remote execution

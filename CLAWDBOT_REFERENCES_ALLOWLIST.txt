@@ -28,6 +28,9 @@ These files legitimately contain "ClawdBot" references for historical/documentat
 
 ## Config (verify)
 - .antigravity/config.json - Check if notification message needs update
+- package.json - Project description refers to ClawdBot gateway
+- scripts/agent-tasks/dispatch-all.sh - Refers to ClawdBot tasks
+- scripts/validate-mcp.sh - Refers to ClawdBot MCP stack validation
 
 ## Action Items
 - [ ] Update .antigravity/config.json notification message

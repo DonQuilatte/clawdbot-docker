@@ -41,7 +41,7 @@ agy
 **Setup:**
 ```bash
 # Add to ~/.zshrc
-echo 'source ~/Development/Projects/clawdbot/scripts/agy-shell-integration.sh' >> ~/.zshrc
+echo 'source ~/Development/Projects/dev-infra/scripts/agy-shell-integration.sh' >> ~/.zshrc
 source ~/.zshrc
 ```
 
@@ -128,7 +128,7 @@ When you `cd myapp`:
 
 **From any project directory:**
 ```bash
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 agy                      # Smart: detects project, starts local Claude
 ```
 
@@ -149,7 +149,7 @@ agy -r attach <job-id>   # Attach to session
 
 **Add to ~/.zshrc:**
 ```bash
-source ~/Development/Projects/clawdbot/scripts/agy-shell-integration.sh
+source ~/Development/Projects/dev-infra/scripts/agy-shell-integration.sh
 ```
 
 **Then just:**
@@ -208,7 +208,7 @@ You: "analyze the authentication flow"
 ### Option 1: Use Enhanced Commands (Ready Now)
 
 ```bash
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 agy -r "analyze scripts directory"
 agy -r status
 ```
@@ -216,10 +216,10 @@ agy -r status
 ### Option 2: Add Shell Integration (5 minutes)
 
 ```bash
-echo 'source ~/Development/Projects/clawdbot/scripts/agy-shell-integration.sh' >> ~/.zshrc
+echo 'source ~/Development/Projects/dev-infra/scripts/agy-shell-integration.sh' >> ~/.zshrc
 source ~/.zshrc
 
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 # See automatic detection
 agy
 ```

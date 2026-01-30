@@ -7,9 +7,9 @@
 **Auto-detects projects when you `cd` into them:**
 
 ```bash
-$ cd ~/Development/Projects/clawdbot
+$ cd ~/Development/Projects/dev-infra
 
-📍 Project detected: clawdbot
+📍 Project detected: dev-infra
 💡 Quick commands:
    agy              # Start Claude locally
    agy -r "task"    # Run task on TW Mac
@@ -29,7 +29,7 @@ $ agy
 
 ```bash
 source ~/.zshrc
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 # See the magic!
 ```
 
@@ -78,7 +78,7 @@ cd ~/Development/Projects/clawdbot
    - Setup scripts
 
 3. **Prototype integration:**
-   - Test with clawdbot
+   - Test with dev-infra
    - Iterate and refine
 
 ---
@@ -91,7 +91,7 @@ cd ~/Development/Projects/clawdbot
 ~/
 └── .zshrc                                          (added 2 lines)
 
-clawdbot/
+dev-infra/
 ├── scripts/
 │   ├── agy                                        (enhanced: 60 lines)
 │   ├── agy-shell-integration.sh                  (new: 43 lines)
@@ -102,7 +102,7 @@ clawdbot/
 ### Planned (Path 3)
 
 ```
-clawdbot/
+dev-infra/
 ├── PATH_3_PLAN.md                                (new: 515 lines)
 ├── templates/
 │   └── .antigravity/
@@ -121,7 +121,7 @@ clawdbot/
 ### All Files Modified
 
 ```bash
-cd ~/Development/Projects/clawdbot
+cd ~/Development/Projects/dev-infra
 
 # New/modified files for Path 2:
 git add scripts/agy
@@ -175,8 +175,8 @@ Previous enhancements preserved:
 source ~/.zshrc
 
 # 2. Navigate to a project
-cd ~/Development/Projects/clawdbot
-# Should see: 📍 Project detected: clawdbot
+cd ~/Development/Projects/dev-infra
+# Should see: 📍 Project detected: dev-infra
 
 # 3. Start Claude
 agy
@@ -225,7 +225,7 @@ Open Antigravity → Select Project → Done
 1. **Test Path 2:**
    ```bash
    source ~/.zshrc
-   cd ~/Development/Projects/clawdbot
+   cd ~/Development/Projects/dev-infra
    agy
    ```
 
@@ -237,7 +237,7 @@ Open Antigravity → Select Project → Done
 
 3. **Commit everything:**
    ```bash
-   cd ~/Development/Projects/clawdbot
+   cd ~/Development/Projects/dev-infra
    git add -A
    git commit -m "feat(agy): Path 2 complete + Path 3 planned"
    git push
