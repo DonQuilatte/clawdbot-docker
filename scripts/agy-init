@@ -168,6 +168,9 @@ if [ "$CREATE_TASKS" = true ]; then
       "label": "AGY Auto-Setup",
       "type": "shell",
       "command": "${workspaceFolder}/scripts/agy-auto-setup",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
       "runOptions": {
         "runOn": "folderOpen"
       },

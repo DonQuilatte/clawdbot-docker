@@ -1,0 +1,255 @@
+#!/bin/bash
+# agy-health - Validate Path 3 Antigravity integration setup
+#
+# Usage:
+#   agy-health              # Check current directory
+#   agy-health /path/to/project
+#   agy-health --fix        # Attempt to fix issues
+#
+# Checks:
+#   1. .antigravity/config.json exists and is valid
+#   2. .vscode/tasks.json has folderOpen trigger
+#   3. scripts/agy-auto-setup exists and is executable
+#   4. direnv is configured
+#   5. MCP servers are configured
+#   6. Secrets are available (optional)
+
+set -u
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Counters
+PASS=0
+FAIL=0
+WARN=0
+
+PROJECT_PATH="${1:-.}"
+FIX_MODE=false
+
+if [[ "$PROJECT_PATH" == "--fix" ]]; then
+    FIX_MODE=true
+    PROJECT_PATH="${2:-.}"
+fi
+
+# Resolve path
+PROJECT_PATH="$(cd "$PROJECT_PATH" 2>/dev/null && pwd)" || {
+    echo -e "${RED}Error: Cannot access $PROJECT_PATH${NC}"
+    exit 1
+}
+
+PROJECT_NAME=$(basename "$PROJECT_PATH")
+
+echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  AGY Health Check: ${NC}$PROJECT_NAME"
+echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+echo ""
+
+check() {
+    local name="$1"
+    local status="$2"
+    local message="${3:-}"
+
+    if [ "$status" = "pass" ]; then
+        echo -e "  ${GREEN}✓${NC} $name"
+        ((PASS++))
+    elif [ "$status" = "fail" ]; then
+        echo -e "  ${RED}✗${NC} $name"
+        [ -n "$message" ] && echo -e "    ${RED}→ $message${NC}"
+        ((FAIL++))
+    elif [ "$status" = "warn" ]; then
+        echo -e "  ${YELLOW}⚠${NC} $name"
+        [ -n "$message" ] && echo -e "    ${YELLOW}→ $message${NC}"
+        ((WARN++))
+    fi
+}
+
+# ============================================================
+# Check 1: .antigravity/config.json
+# ============================================================
+echo -e "${BLUE}Path 3 Configuration${NC}"
+
+if [ -f "$PROJECT_PATH/.antigravity/config.json" ]; then
+    if jq -e '.version == "3.0"' "$PROJECT_PATH/.antigravity/config.json" &>/dev/null; then
+        check ".antigravity/config.json (v3.0)" "pass"
+    else
+        check ".antigravity/config.json" "warn" "Not Path 3 schema (missing version: 3.0)"
+    fi
+else
+    check ".antigravity/config.json" "fail" "File not found"
+fi
+
+if [ -f "$PROJECT_PATH/.antigravity/config.schema.json" ]; then
+    check ".antigravity/config.schema.json" "pass"
+else
+    check ".antigravity/config.schema.json" "warn" "Schema file not found"
+fi
+
+# ============================================================
+# Check 2: .vscode/tasks.json
+# ============================================================
+echo ""
+echo -e "${BLUE}VS Code Integration${NC}"
+
+if [ -f "$PROJECT_PATH/.vscode/tasks.json" ]; then
+    if grep -q '"runOn".*"folderOpen"' "$PROJECT_PATH/.vscode/tasks.json" 2>/dev/null; then
+        check ".vscode/tasks.json (folderOpen trigger)" "pass"
+    else
+        check ".vscode/tasks.json" "fail" "Missing runOn: folderOpen"
+    fi
+
+    if grep -q '"cwd"' "$PROJECT_PATH/.vscode/tasks.json" 2>/dev/null; then
+        check ".vscode/tasks.json (cwd option)" "pass"
+    else
+        check ".vscode/tasks.json (cwd option)" "warn" "Missing cwd option"
+    fi
+else
+    check ".vscode/tasks.json" "fail" "File not found"
+fi
+
+# ============================================================
+# Check 3: agy-auto-setup script
+# ============================================================
+echo ""
+echo -e "${BLUE}Setup Script${NC}"
+
+if [ -f "$PROJECT_PATH/scripts/agy-auto-setup" ]; then
+    check "scripts/agy-auto-setup exists" "pass"
+
+    if [ -x "$PROJECT_PATH/scripts/agy-auto-setup" ]; then
+        check "scripts/agy-auto-setup executable" "pass"
+    else
+        check "scripts/agy-auto-setup executable" "fail" "chmod +x needed"
+    fi
+else
+    check "scripts/agy-auto-setup" "fail" "File not found"
+fi
+
+# ============================================================
+# Check 4: direnv
+# ============================================================
+echo ""
+echo -e "${BLUE}Environment${NC}"
+
+if [ -f "$PROJECT_PATH/.envrc" ]; then
+    check ".envrc exists" "pass"
+
+    if command -v direnv &>/dev/null; then
+        if direnv status 2>/dev/null | grep -q "Found RC allowed true" || \
+           [ -f "$PROJECT_PATH/.direnv" ] || \
+           direnv allow "$PROJECT_PATH" &>/dev/null; then
+            check "direnv allowed" "pass"
+        else
+            check "direnv allowed" "warn" "Run: direnv allow"
+        fi
+    else
+        check "direnv" "warn" "direnv not installed"
+    fi
+else
+    check ".envrc" "warn" "No .envrc file"
+fi
+
+# ============================================================
+# Check 5: MCP Configuration
+# ============================================================
+echo ""
+echo -e "${BLUE}MCP Servers${NC}"
+
+MCP_CONFIG=""
+for path in ".vscode/mcp.json" ".antigravity/mcp-servers.json" ".cursor/mcp.json"; do
+    if [ -f "$PROJECT_PATH/$path" ]; then
+        MCP_CONFIG="$path"
+        break
+    fi
+done
+
+if [ -n "$MCP_CONFIG" ]; then
+    check "MCP config ($MCP_CONFIG)" "pass"
+
+    SERVER_COUNT=$(jq '.mcpServers | length' "$PROJECT_PATH/$MCP_CONFIG" 2>/dev/null || echo 0)
+    if [ "$SERVER_COUNT" -gt 0 ]; then
+        check "MCP servers configured ($SERVER_COUNT)" "pass"
+    else
+        check "MCP servers" "warn" "No servers configured"
+    fi
+else
+    check "MCP config" "warn" "No MCP configuration found"
+fi
+
+# ============================================================
+# Check 6: 1Password / Secrets
+# ============================================================
+echo ""
+echo -e "${BLUE}Secrets${NC}"
+
+if command -v op &>/dev/null; then
+    check "1Password CLI installed" "pass"
+
+    if op account list &>/dev/null; then
+        check "1Password signed in" "pass"
+    else
+        check "1Password signed in" "warn" "Not signed in"
+    fi
+else
+    check "1Password CLI" "warn" "Not installed (optional)"
+fi
+
+# ============================================================
+# Check 7: dev-infra connectivity
+# ============================================================
+echo ""
+echo -e "${BLUE}dev-infra Integration${NC}"
+
+DEV_INFRA="$HOME/Development/Projects/dev-infra"
+
+if [ -d "$DEV_INFRA" ]; then
+    check "dev-infra accessible" "pass"
+
+    if [ -x "$DEV_INFRA/scripts/agy-init" ]; then
+        check "agy-init available" "pass"
+    else
+        check "agy-init" "warn" "Not found or not executable"
+    fi
+
+    if [ -x "$DEV_INFRA/scripts/agy-auto-setup" ]; then
+        check "agy-auto-setup source" "pass"
+    else
+        check "agy-auto-setup source" "fail" "Master script not found"
+    fi
+else
+    check "dev-infra" "fail" "Not found at $DEV_INFRA"
+fi
+
+# ============================================================
+# Summary
+# ============================================================
+echo ""
+echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+TOTAL=$((PASS + FAIL + WARN))
+echo -e "  ${GREEN}Passed:${NC} $PASS  ${RED}Failed:${NC} $FAIL  ${YELLOW}Warnings:${NC} $WARN"
+echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+
+if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
+    echo ""
+    echo -e "  ${GREEN}✅ All checks passed!${NC}"
+    echo ""
+    exit 0
+elif [ "$FAIL" -eq 0 ]; then
+    echo ""
+    echo -e "  ${YELLOW}⚠️  Passed with warnings${NC}"
+    echo ""
+    exit 0
+else
+    echo ""
+    echo -e "  ${RED}❌ Some checks failed${NC}"
+    if [ "$FIX_MODE" = false ]; then
+        echo -e "  Run ${BLUE}agy-health --fix${NC} to attempt repairs"
+        echo -e "  Or run ${BLUE}agy-init --force${NC} to reinitialize"
+    fi
+    echo ""
+    exit 1
+fi
