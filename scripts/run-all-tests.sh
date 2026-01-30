@@ -1,13 +1,14 @@
 #!/bin/bash
 # Master Test Runner - Runs all Clawdbot system tests
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+# Source common library for colors and utilities
+LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
+# shellcheck source=lib/common.sh
+source "$LIB_DIR/common.sh"
 
-SCRIPT_DIR="$HOME/scripts"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 REPORT_FILE="/tmp/clawdbot-test-report-${TIMESTAMP}.txt"
 

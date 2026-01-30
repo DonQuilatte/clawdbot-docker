@@ -1,0 +1,52 @@
+name: Shellcheck
+
+on:
+  push:
+    paths:
+      - 'scripts/**'
+      - 'config/*.sh'
+      - '.github/workflows/shellcheck.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'config/*.sh'
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on scripts
+        run: |
+          # Find all shell scripts (with shebang or .sh extension)
+          find scripts -type f \( -name "*.sh" -o -exec grep -l '^#!/.*bash' {} \; \) 2>/dev/null | \
+            xargs -r shellcheck --severity=warning --format=gcc || true
+
+          # Check config scripts
+          find config -name "*.sh" -type f 2>/dev/null | \
+            xargs -r shellcheck --severity=warning --format=gcc || true
+
+      - name: Shellcheck summary
+        if: always()
+        run: |
+          echo "### Shellcheck Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Count scripts checked
+          SCRIPT_COUNT=$(find scripts config -type f \( -name "*.sh" -o -exec grep -l '^#!/.*bash' {} \; \) 2>/dev/null | wc -l)
+          echo "Checked **$SCRIPT_COUNT** shell scripts" >> $GITHUB_STEP_SUMMARY
+
+          # Run shellcheck and capture issues
+          ISSUES=$(find scripts config -type f \( -name "*.sh" -o -exec grep -l '^#!/.*bash' {} \; \) 2>/dev/null | \
+            xargs -r shellcheck --severity=warning --format=json 2>/dev/null | jq -r 'length' 2>/dev/null || echo "0")
+
+          if [ "$ISSUES" = "0" ]; then
+            echo "No issues found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Found **$ISSUES** potential issues" >> $GITHUB_STEP_SUMMARY
+          fi
