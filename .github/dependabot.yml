@@ -1,0 +1,49 @@
+# Dependabot configuration
+# Deploy to: .github/dependabot.yml
+
+version: 2
+updates:
+  # npm - daily, group patches and minors
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "America/New_York"
+    groups:
+      patches:
+        patterns: ["*"]
+        update-types: ["patch"]
+      minors:
+        patterns: ["*"]
+        update-types: ["minor"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 10
+
+  # Docker - weekly
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "deps(docker)"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions - weekly, auto-merge all
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "deps(actions)"
+    open-pull-requests-limit: 5

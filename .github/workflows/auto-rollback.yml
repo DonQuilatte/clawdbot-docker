@@ -1,0 +1,53 @@
+name: Rollback Failed Auto-merge
+
+on:
+  workflow_run:
+    workflows: ["CI"]  # Replace with your main CI workflow name
+    types: [completed]
+    branches: [main, master]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-and-rollback:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'failure'
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+      
+      - name: Check if last commit was dependabot auto-merge
+        id: check
+        run: |
+          LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+          LAST_AUTHOR=$(git log -1 --pretty=%an)
+          
+          if [[ "$LAST_AUTHOR" == "dependabot[bot]" ]] || echo "$LAST_COMMIT_MSG" | grep -q "Bump"; then
+            echo "is_dependabot=true" >> $GITHUB_OUTPUT
+            echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          else
+            echo "is_dependabot=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Revert failed auto-merge
+        if: steps.check.outputs.is_dependabot == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git revert --no-edit HEAD
+          git push
+      
+      - name: Create issue for failed update
+        if: steps.check.outputs.is_dependabot == 'true'
+        run: |
+          gh issue create \
+            --title "Auto-merge rollback: ${{ steps.check.outputs.commit_sha }}" \
+            --body "CI failed after Dependabot auto-merge. Reverted commit ${{ steps.check.outputs.commit_sha }}. Manual fix required." \
+            --label "dependencies,failed-auto-merge"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
