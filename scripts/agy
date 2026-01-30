@@ -56,6 +56,28 @@ case "$1" in
         shift
         exec "$(dirname "$0")/agy-local" "$@"
         ;;
+    # Sync commands
+    sync)
+        shift
+        exec "$(dirname "$0")/agy-sync" "$@"
+        ;;
+    health|check)
+        shift
+        exec "$(dirname "$0")/agy-health" "$@"
+        ;;
+    init)
+        shift
+        exec "$(dirname "$0")/agy-init" "$@"
+        ;;
+    upstream)
+        shift
+        if [ "${1:-}" = "check" ] || [ -z "${1:-}" ]; then
+            exec bun run "$(dirname "$0")/check-upstream.ts"
+        else
+            exec bun run "$(dirname "$0")/sync-upstream.ts" "$@"
+        fi
+        ;;
+    # Dependency commands
     dependabot|deps)
         shift
         exec bun run "$(dirname "$0")/dependabot-triage.ts" "$@"
@@ -63,6 +85,31 @@ case "$1" in
     manifest)
         echo "manifest command not yet implemented"
         exit 1
+        ;;
+    # Help
+    help|--help|-h)
+        echo "agy - Antigravity CLI"
+        echo ""
+        echo "Usage: agy [command] [options]"
+        echo ""
+        echo "Session commands:"
+        echo "  (no args)           Auto-detect project, start Claude"
+        echo "  -r, --remote        Use TW Mac for execution"
+        echo "  -l, --local         Use this Mac for execution"
+        echo ""
+        echo "Project commands:"
+        echo "  init [path]         Initialize project for Path 3"
+        echo "  health [path]       Validate Path 3 setup"
+        echo "  sync [--update]     Sync dev-infra to downstream projects"
+        echo ""
+        echo "Upstream commands:"
+        echo "  upstream            Check upstream repos for updates"
+        echo "  upstream <repo>     Sync specific upstream repo"
+        echo ""
+        echo "Other commands:"
+        echo "  deps                Triage Dependabot alerts"
+        echo "  help                Show this help"
+        exit 0
         ;;
     *)
         # Default to local
