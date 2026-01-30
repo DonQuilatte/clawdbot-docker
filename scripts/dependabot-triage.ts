@@ -9,6 +9,7 @@
 
 import { $ } from "bun";
 process.env.PATH = `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}`;
+delete process.env.GITHUB_TOKEN; // Use gh keyring auth, not stale env token
 
 interface PR {
   number: number;
