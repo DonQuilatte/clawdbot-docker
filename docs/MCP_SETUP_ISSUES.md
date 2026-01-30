@@ -1,6 +1,6 @@
 # MCP Setup Issues & Blockers
 
-> Lessons learned from setting up MCP servers for clawdbot-docker project
+> Lessons learned from setting up MCP servers for dev-infra project
 > Date: 2025-01-25
 
 ---

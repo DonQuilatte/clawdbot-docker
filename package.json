@@ -1,7 +1,7 @@
 {
   "name": "dev-infra",
   "version": "1.0.0",
-  "description": "Distributed development infrastructure for Mac environments with ClawdBot gateway deployment",
+  "description": "Distributed development infrastructure for Mac environments",
   "private": true,
   "scripts": {
     "test": "jest",

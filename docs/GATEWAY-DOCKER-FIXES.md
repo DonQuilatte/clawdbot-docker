@@ -38,8 +38,8 @@ Named Docker volumes are created with ownership from the Docker image's default 
 **Solution**: Use host directory mounts instead of named volumes:
 ```yaml
 volumes:
-  - ${HOME}/.clawdbot-docker:/home/node/.clawdbot:rw
-  - ${HOME}/.clawdbot-docker/logs:/home/node/logs:rw
+  - ${HOME}/.dev-infra:/home/node/.clawdbot:rw
+  - ${HOME}/.dev-infra/logs:/home/node/logs:rw
 ```
 
 ### 4. Token Configuration Hierarchy

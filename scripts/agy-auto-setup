@@ -141,9 +141,9 @@ check_mcp_health() {
     fi
 
     # Run the comprehensive health check script
-    if [ -x "scripts/agy-health-check" ]; then
+    if [ -x "scripts/agy-health" ]; then
         log "  Running detailed health check..."
-        ./scripts/agy-health-check >> "$LOG_FILE" 2>&1 || true
+        ./scripts/agy-health >> "$LOG_FILE" 2>&1 || true
     fi
 
     # Count configured servers

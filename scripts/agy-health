@@ -68,6 +68,35 @@ check() {
     fi
 }
 
+fix() {
+    echo -e "${BLUE}Attempting repairs...${NC}"
+    
+    # 1. Executable setup
+    if [ -f "$PROJECT_PATH/scripts/agy-auto-setup" ]; then
+        chmod +x "$PROJECT_PATH/scripts/agy-auto-setup"
+        echo "  - Fixed agy-auto-setup permissions"
+    fi
+    
+    # 2. Sync MCP
+    if [ -f "$PROJECT_PATH/scripts/agy-sync-mcp" ]; then
+        chmod +x "$PROJECT_PATH/scripts/agy-sync-mcp"
+        (cd "$PROJECT_PATH" && ./scripts/agy-sync-mcp) &>/dev/null
+        echo "  - Ran agy-sync-mcp"
+    fi
+    
+    # 3. Direnv
+    if command -v direnv &>/dev/null && [ -f "$PROJECT_PATH/.envrc" ]; then
+        direnv allow "$PROJECT_PATH" &>/dev/null
+        echo "  - Allowed direnv"
+    fi
+    
+    echo -e "${GREEN}Repairs complete. Running health check again...${NC}"
+    echo ""
+    
+    # Reset counters and re-run main logic (re-invoking script to avoid complex state reset)
+    exec "$0" "$PROJECT_PATH"
+}
+
 # ============================================================
 # Check 1: .antigravity/config.json
 # ============================================================
@@ -159,6 +188,33 @@ fi
 echo ""
 echo -e "${BLUE}MCP Servers${NC}"
 
+# Check for the primary Path 3 config
+if [ -f "$PROJECT_PATH/.antigravity/mcp_config.json" ]; then
+    check ".antigravity/mcp_config.json" "pass"
+    
+    # Check if paths are absolute
+    if grep -q "\${workspaceFolder}" "$PROJECT_PATH/.antigravity/mcp_config.json"; then
+        check "Absolute paths" "fail" "Config contains workspace variables"
+    else
+        check "Absolute paths" "pass"
+    fi
+else
+    check ".antigravity/mcp_config.json" "warn" "Not generated yet. Run scripts/agy-sync-mcp"
+fi
+
+# Check Antigravity Global Link
+GLOBAL_MCP="$HOME/.gemini/mcp_config.json"
+if [ -L "$GLOBAL_MCP" ]; then
+    TARGET=$(readlink "$GLOBAL_MCP")
+    if [[ "$TARGET" == *"$PROJECT_PATH"* ]]; then
+        check "Antigravity global link" "pass" "Linked to this project"
+    else
+        check "Antigravity global link" "warn" "Linked to: $(basename "$(dirname "$(dirname "$TARGET")")")"
+    fi
+else
+    check "Antigravity global link" "fail" "Not linked. Running sync might fix this."
+fi
+
 MCP_CONFIG=""
 for path in ".vscode/mcp.json" ".antigravity/mcp-servers.json" ".cursor/mcp.json"; do
     if [ -f "$PROJECT_PATH/$path" ]; then
@@ -168,7 +224,7 @@ for path in ".vscode/mcp.json" ".antigravity/mcp-servers.json" ".cursor/mcp.json
 done
 
 if [ -n "$MCP_CONFIG" ]; then
-    check "MCP config ($MCP_CONFIG)" "pass"
+    check "Source MCP config ($MCP_CONFIG)" "pass"
 
     SERVER_COUNT=$(jq '.mcpServers | length' "$PROJECT_PATH/$MCP_CONFIG" 2>/dev/null || echo 0)
     if [ "$SERVER_COUNT" -gt 0 ]; then
@@ -177,7 +233,7 @@ if [ -n "$MCP_CONFIG" ]; then
         check "MCP servers" "warn" "No servers configured"
     fi
 else
-    check "MCP config" "warn" "No MCP configuration found"
+    check "MCP config source" "warn" "No source MCP configuration found"
 fi
 
 # ============================================================
@@ -225,13 +281,17 @@ else
 fi
 
 # ============================================================
-# Summary
+# Summary & Fix execution
 # ============================================================
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
 TOTAL=$((PASS + FAIL + WARN))
 echo -e "  ${GREEN}Passed:${NC} $PASS  ${RED}Failed:${NC} $FAIL  ${YELLOW}Warnings:${NC} $WARN"
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
+
+if [ "$FIX_MODE" = true ] && ([ "$FAIL" -gt 0 ] || [ "$WARN" -gt 0 ]); then
+    fix
+fi
 
 if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
     echo ""

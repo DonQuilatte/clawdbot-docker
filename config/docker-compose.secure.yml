@@ -98,8 +98,8 @@ services:
     # SECURITY: Writable volumes (minimal)
     # Use host directories with correct ownership for macOS (uid 501)
     volumes:
-      - ${HOME}/.clawdbot-docker:/home/node/.clawdbot:rw
-      - ${HOME}/.clawdbot-docker/logs:/home/node/logs:rw
+      - ${HOME}/.dev-infra:/home/node/.clawdbot:rw
+      - ${HOME}/.dev-infra/logs:/home/node/logs:rw
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
