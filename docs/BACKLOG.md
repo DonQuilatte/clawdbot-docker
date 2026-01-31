@@ -34,6 +34,16 @@ No git tags exist. Tag v1.2.0 for Brain/Agent infrastructure milestone.
 
 ## Resolved
 
+### Code review cleanup
+
+**Priority:** Low
+
+**Resolution:** ✅ Fixed 5 scripts - added strict mode to `agy-notify` and `start-node.sh.template`, refactored `agy-init`, `agy-sync-mcp`, and `dispatch-all.sh` to source `common.sh` with fallback.
+
+**Resolved:** 2026-01-31
+
+---
+
 ### Verify shellcheck CI locally
 
 **Priority:** Low

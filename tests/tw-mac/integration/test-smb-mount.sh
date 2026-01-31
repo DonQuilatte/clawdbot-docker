@@ -53,7 +53,7 @@ fi
 
 # Test 3: SMB mount active
 echo "--- Test: SMB mount active ---"
-if mount | grep -qE "192.168.1.245|tw\.local|tywhitaker"; then
+if mount | grep -qiE "192.168.1.245|tw\.local|tywhitaker"; then
     log_pass "SMB mount is active"
     SMB_ACTIVE=true
 else

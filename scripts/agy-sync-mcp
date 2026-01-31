@@ -6,10 +6,17 @@
 
 set -euo pipefail
 
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common library for colors and utilities
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+else
+    # Fallback colors if common.sh not available
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+fi
 
 LOG_FILE="/tmp/agy-sync-mcp-$(date +%Y%m%d).log"
 log() { echo "[$(date '+%H:%M:%S')] $*" >> "$LOG_FILE"; }

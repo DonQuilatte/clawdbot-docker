@@ -5,7 +5,7 @@
 # NOTE: This script intentionally continues on errors since notifications
 # are non-critical and should never block the calling script.
 
-set -u  # Catch undefined variables, but allow command failures
+set -uo pipefail  # Catch undefined variables and pipe failures, but allow command failures
 
 TITLE="${1:-Job Notification}"
 MESSAGE="${2:-}"

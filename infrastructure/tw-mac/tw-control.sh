@@ -69,7 +69,7 @@ status() {
     fi
 
     # Check SMB mount
-    if mount | grep -qE "192.168.1.245|tw\.local|tw-mac"; then
+    if mount | grep -qiE "192.168.1.245|tw\.local|tw-mac|tywhitaker"; then
         echo -e "${GREEN}✓ SMB Mount: Active${NC}"
     else
         echo -e "${YELLOW}○ SMB Mount: Not mounted${NC}"

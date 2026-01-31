@@ -2,16 +2,23 @@
 # Agent Task Dispatcher for ClawdBot
 # Uses native Antigravity CLI to spawn parallel agents
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common library for colors and utilities
+if [[ -f "$SCRIPT_DIR/../lib/common.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/common.sh"
+else
+    # Fallback colors if common.sh not available
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m'
+fi
 
 ANTIGRAVITY_CLI="/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity"
 PROJECT_DIR="$HOME/Development/Projects/dev-infrastructure"
-
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
 
 dispatch_agent() {
     local task_name="$1"

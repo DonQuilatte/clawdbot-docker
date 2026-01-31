@@ -59,13 +59,13 @@ fi
 
 # Test 4: Variables defined correctly
 echo "--- Test: Configuration variables ---"
-if grep -q "TW_TAILSCALE_IP=" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+if grep -q "TW_TAILSCALE_IP=" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
     log_pass "Tailscale IP variable defined"
 else
     log_fail "Tailscale IP variable not found"
 fi
 
-if grep -q "TW_LAN_IP=" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+if grep -q "TW_LAN_IP=" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
     log_pass "LAN IP variable defined"
 else
     log_fail "LAN IP variable not found"
@@ -73,13 +73,13 @@ fi
 
 # Test 5: SSH options configured
 echo "--- Test: SSH options ---"
-if grep -q "SSH_OPTS=" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+if grep -q "SSH_OPTS=" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
     log_pass "SSH options defined"
 else
     log_fail "SSH options not found"
 fi
 
-if grep -q "BatchMode=yes" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+if grep -q "BatchMode=yes" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
     log_pass "BatchMode enabled for non-interactive SSH"
 else
     log_fail "BatchMode not enabled"
@@ -90,7 +90,7 @@ echo "--- Test: Command documentation ---"
 COMMANDS=("status" "connect" "disconnect" "start-mcp" "stop-mcp" "shell" "tmux" "run")
 for cmd in "${COMMANDS[@]}"; do
     # Check for command in case statement (cmd) pattern) or in echo statements
-    if grep -qE "${cmd}\)|\"${cmd}\"|'${cmd}'" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+    if grep -qE "${cmd}\)|\"${cmd}\"|'${cmd}'" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
         log_pass "Command '$cmd' implemented"
     else
         log_fail "Command '$cmd' not found"
@@ -99,8 +99,8 @@ done
 
 # Test 7: Color codes defined
 echo "--- Test: Output formatting ---"
-if grep -q "GREEN=" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh" && \
-   grep -q "RED=" "$HOME/Development/Projects/clawdbot/infrastructure/tw-mac/tw-control.sh"; then
+if grep -q "GREEN=" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh" && \
+   grep -q "RED=" "$HOME/Development/Projects/dev-infra/infrastructure/tw-mac/tw-control.sh"; then
     log_pass "Color codes defined for output"
 else
     log_fail "Color codes missing"

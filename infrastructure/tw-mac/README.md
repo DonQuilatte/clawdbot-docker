@@ -115,8 +115,9 @@ op signin
 ### SMB Mount (if disconnected)
 
 1. Finder → Go → Connect to Server (⌘K)
-2. Enter: `smb://192.168.1.245`
-3. Login with TW Mac credentials
+2. Enter: `smb://TW.local` (or `smb://192.168.1.245`)
+3. Login with TW Mac credentials (user: `1`)
+4. Select `tywhitaker` share for home directory access
 
 ## Paths
 
@@ -161,10 +162,12 @@ tw run 'tmux list-sessions'
 ### SMB mount missing
 
 ```bash
-# Check if mounted
-mount | grep 192.168.1.245
+# Check if mounted (case-insensitive)
+mount | grep -iE "192.168.1.245|tw\.local|tywhitaker"
 
-# Remount via Finder: ⌘K → smb://192.168.1.245
+# Remount via Finder: ⌘K → smb://TW.local
+# Or from terminal:
+open "smb://TW.local"
 ```
 
 ## Development Workflows
