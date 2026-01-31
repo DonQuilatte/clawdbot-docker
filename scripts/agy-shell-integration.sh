@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # AGY Shell Integration - Auto-detect projects
 # Source this file in ~/.zshrc: source ~/Development/Projects/dev-infra/scripts/agy-shell-integration.sh
 

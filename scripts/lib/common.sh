@@ -116,7 +116,8 @@ get_gateway_token() {
     local token_ref
     
     # Identify repo root (assuming scripts/lib is 2 levels deep)
-    local repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    local repo_root
+    repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
     
     if [ ! -f "$repo_root/.env" ]; then
         echo "❌ ERROR: .env file not found in $repo_root" >&2

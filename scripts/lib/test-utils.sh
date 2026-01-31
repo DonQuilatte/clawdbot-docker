@@ -30,7 +30,7 @@ init_test_cache() {
     CACHE_DIR="/tmp/${prefix}-cache-$$"
     mkdir -p "$CACHE_DIR"
     # Set trap to cleanup on exit
-    trap "rm -rf '$CACHE_DIR'" EXIT
+    trap 'rm -rf "$CACHE_DIR"' EXIT
     echo "$CACHE_DIR"
 }
 

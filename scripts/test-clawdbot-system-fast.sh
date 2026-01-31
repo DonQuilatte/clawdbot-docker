@@ -31,7 +31,7 @@ CACHE_DIR="/tmp/clawdbot-test-cache-$$"
 mkdir -p "$CACHE_DIR"
 
 # Cleanup on exit
-trap "rm -rf $CACHE_DIR" EXIT
+trap 'rm -rf "$CACHE_DIR"' EXIT
 
 # Initialize test log
 echo "=== Clawdbot System Test Suite (Optimized) ===" > "$TEST_RESULTS"
@@ -81,7 +81,7 @@ echo -e "${BLUE}Collecting system data...${NC}"
     top -l 1 > "$CACHE_DIR/local_top" 2>/dev/null || true
     df -h / > "$CACHE_DIR/local_disk" 2>/dev/null || true
     curl -s "$GATEWAY_URL" > "$CACHE_DIR/dashboard_html" 2>/dev/null || true
-    clawdbot gateway status 2>&1 > "$CACHE_DIR/gateway_status" || true
+    clawdbot gateway status > "$CACHE_DIR/gateway_status" 2>&1 || true
 } &
 LOCAL_PID=$!
 
