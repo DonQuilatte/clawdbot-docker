@@ -27,6 +27,10 @@ This document evaluates three approaches for integrating 1Password with an MCP (
 | Namespace collisions | Medium | Keys namespaced as `server.ENV_VAR` |
 | Date parsing mismatch | Medium | Using epoch seconds throughout |
 | Audit claim overstated | Medium | Clarified: refresh logs only |
+| Project name collisions | Medium | Cache key is hash of absolute project path |
+| CWD-dependent paths | Medium | Commands accept `--path`, resolve `.enabled-servers` from project root |
+| Refresh-all discovery | Medium | Explicit `projects.json` registry |
+| Team enablement vs local | Low | `.enabled-servers` committed; `.enabled-servers.local` optional |
 
 ---
 
@@ -161,7 +165,7 @@ Secrets on disk in plaintext violates security requirement P1.
 ┌─────────────────────────────────────────────────────────────┐
 │                     Cache Builder                           │
 │                                                             │
-│  1. Read project's .enabled-servers file                    │
+│  1. Read project's .enabled-servers (+ optional .local)      │
 │  2. For each enabled server:                                │
 │       For each secret (namespaced as server.ENV_VAR):       │
 │         value = $(op read $op_ref)                          │
@@ -229,32 +233,43 @@ echo "   Public key: $(cat "$AGE_DIR/recipient.txt")"
 ├── age/
 │   ├── identity.txt          # Private key (600 perms)
 │   └── recipient.txt         # Public key (644 perms)
-└── mcp-registry.json         # Server definitions
+├── mcp-registry.json         # Server definitions
+└── projects.json             # Registry of project paths (refresh-all)
 
 ~/.cache/dev-infra/
 ├── projects/
-│   ├── project-a/
+│   ├── <project-hash>/
 │   │   ├── secrets.enc       # Encrypted (only enabled servers)
 │   │   └── secrets.meta      # Epoch timestamps
-│   └── project-b/
+│   └── <project-hash>/
 │       ├── secrets.enc
 │       └── secrets.meta
 └── refresh.log               # Audit: refresh events only
 ```
 
+**Cache key:** `project-hash` = sha256 of the absolute project path.
+
 #### Cache Builder (Corrected)
 
 ```bash
 #!/bin/bash
-# dev-infra secrets refresh [project]
+# dev-infra secrets refresh --path <project>
 
 set -euo pipefail
 
-PROJECT=${1:-$(basename "$PWD")}
+PROJECT_PATH="$PWD"
+if [[ "${1:-}" == "--path" && -n "${2:-}" ]]; then
+    PROJECT_PATH="$2"
+fi
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
+
 CONFIG_DIR="$HOME/.config/dev-infra"
-CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
 REGISTRY="$CONFIG_DIR/mcp-registry.json"
-ENABLED_FILE=".enabled-servers"
+ENABLED_FILE="$PROJECT_PATH/.enabled-servers"
+ENABLED_LOCAL="$PROJECT_PATH/.enabled-servers.local"
 AGE_RECIPIENT="$CONFIG_DIR/age/recipient.txt"
 
 SOFT_TTL=14400   # 4 hours
@@ -274,13 +289,16 @@ if [[ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]]; then
     fi
 fi
 
-# Read enabled servers for this project
+# Read enabled servers for this project (plus optional local overrides)
 if [[ ! -f "$ENABLED_FILE" ]]; then
-    echo "No enabled servers for $PROJECT (missing $ENABLED_FILE)" >&2
+    echo "No enabled servers for $PROJECT_NAME (missing $ENABLED_FILE)" >&2
     exit 0
 fi
 
-mapfile -t ENABLED_SERVERS < "$ENABLED_FILE"
+mapfile -t ENABLED_SERVERS < <(
+    cat "$ENABLED_FILE" "$ENABLED_LOCAL" 2>/dev/null | \
+    sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d'
+)
 
 # Build namespaced secrets JSON (ONLY enabled servers)
 SECRETS_JSON="{}"
@@ -310,7 +328,9 @@ chmod 600 "$CACHE_DIR/secrets.enc"
 NOW=$(date +%s)
 cat > "$CACHE_DIR/secrets.meta" << EOF
 {
-  "project": "$PROJECT",
+  "project_name": "$PROJECT_NAME",
+  "project_path": "$PROJECT_PATH",
+  "project_id": "$PROJECT_ID",
   "refreshed_at": $NOW,
   "soft_expires_at": $((NOW + SOFT_TTL)),
   "hard_expires_at": $((NOW + HARD_TTL)),
@@ -320,25 +340,32 @@ cat > "$CACHE_DIR/secrets.meta" << EOF
 EOF
 
 # Audit log (refreshes only, not per-use)
-echo "$NOW | $PROJECT | refreshed | servers: ${ENABLED_SERVERS[*]}" >> \
+echo "$NOW | $PROJECT_ID | $PROJECT_NAME | refreshed | servers: ${ENABLED_SERVERS[*]}" >> \
     "$HOME/.cache/dev-infra/refresh.log"
 
-echo "✅ Refreshed cache for $PROJECT (${#ENABLED_SERVERS[@]} servers)"
+echo "✅ Refreshed cache for $PROJECT_NAME (${#ENABLED_SERVERS[@]} servers)"
 ```
 
 #### MCP Launcher (Corrected)
 
 ```bash
 #!/bin/bash
-# mcp-launcher.sh <server> [project]
+# mcp-launcher.sh <server> [--path <project>]
 
 set -euo pipefail
 
 SERVER=$1
-PROJECT=${2:-$(basename "$PWD")}
+shift
+PROJECT_PATH="$PWD"
+if [[ "${1:-}" == "--path" && -n "${2:-}" ]]; then
+    PROJECT_PATH="$2"
+fi
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
 
 CONFIG_DIR="$HOME/.config/dev-infra"
-CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
 REGISTRY="$CONFIG_DIR/mcp-registry.json"
 AGE_IDENTITY="$CONFIG_DIR/age/identity.txt"
 
@@ -358,14 +385,14 @@ refresh_if_needed() {
         return 1  # Fresh, no refresh needed
     elif [[ $NOW -lt $hard_expires ]]; then
         # Soft expired: try refresh, allow stale on failure
-        if ! dev-infra secrets refresh "$PROJECT" 2>/dev/null; then
+        if ! dev-infra secrets refresh --path "$PROJECT_PATH" 2>/dev/null; then
             echo "WARNING: Using stale cache (soft TTL exceeded, refresh failed)" >&2
         fi
         return 1
     else
         # Hard expired: must refresh
-        if ! dev-infra secrets refresh "$PROJECT"; then
-            echo "ERROR: Cache hard-expired and refresh failed" >&2
+        if ! dev-infra secrets refresh --path "$PROJECT_PATH"; then
+            echo "ERROR: Cache hard-expired and refresh failed for $PROJECT_NAME" >&2
             exit 1
         fi
         return 1
@@ -373,7 +400,7 @@ refresh_if_needed() {
 }
 
 if refresh_if_needed; then
-    dev-infra secrets refresh "$PROJECT"
+    dev-infra secrets refresh --path "$PROJECT_PATH"
 fi
 
 # Decrypt cache using age keypair (correct usage)
@@ -412,6 +439,8 @@ fi
 
 exec "$HOME/Development/Projects/dev-infra/scripts/dev-infra" secrets refresh-all
 ```
+
+`refresh-all` iterates `~/.config/dev-infra/projects.json`.
 
 **LaunchAgent plist** (no secrets embedded):
 ```xml
@@ -506,6 +535,9 @@ exec "$HOME/Development/Projects/dev-infra/scripts/dev-infra" secrets refresh-al
 | Secret granularity | Per-project, namespaced | Isolation + no collisions |
 | Audit scope | Refresh logs only | Per-use excessive for dev keys |
 | Linux support | Not required | macOS only |
+| `.enabled-servers` scope | Committed (team-shared) | Avoids per-dev drift |
+| Local overrides | `.enabled-servers.local` | Allows personal additions without affecting team |
+| Project discovery | Explicit `projects.json` | Avoids implicit filesystem scanning |
 
 ---
 

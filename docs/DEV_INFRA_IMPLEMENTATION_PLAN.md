@@ -121,7 +121,25 @@ This plan aligns dev-infra with its intended purpose: a shared platform layer th
 
 ---
 
-### 2. Secrets Management (Revised)
+### 2. Project Registry (refresh-all)
+
+**Location:** `~/.config/dev-infra/projects.json`
+
+**Schema:**
+```json
+{
+  "projects": [
+    { "name": "project-a", "path": "/Users/jederlichman/Development/Projects/project-a" },
+    { "name": "project-b", "path": "/Users/jederlichman/Development/Projects/project-b" }
+  ]
+}
+```
+
+**Purpose:** Source of truth for `dev-infra secrets refresh-all` (no filesystem scanning).
+
+---
+
+### 3. Secrets Management (Revised)
 
 **Based on third-party review feedback. Fixes:**
 - Correct `age` keypair usage (not passphrase)
@@ -130,7 +148,7 @@ This plan aligns dev-infra with its intended purpose: a shared platform layer th
 - Epoch timestamps for TTL
 - Wrapper script for LaunchAgent token injection
 
-#### 2.1 Age Keypair Setup
+#### 3.1 Age Keypair Setup
 
 **Location:** `~/.config/dev-infra/age/`
 
@@ -146,36 +164,50 @@ chmod 600 ~/.config/dev-infra/age/identity.txt
 chmod 644 ~/.config/dev-infra/age/recipient.txt
 ```
 
-#### 2.2 Cache Structure (Per-Project)
+#### 3.2 Cache Structure (Per-Project)
 
 ```
-~/.cache/dev-infra/
+~/.config/dev-infra/
 ├── age/
 │   ├── identity.txt      # Private key (600)
 │   └── recipient.txt     # Public key (644)
+├── mcp-registry.json     # Server definitions
+└── projects.json         # Registry of project paths (refresh-all)
+
+~/.cache/dev-infra/
 ├── projects/
-│   ├── project-a/
+│   ├── <project-hash>/
 │   │   ├── secrets.enc   # Encrypted, only enabled servers
 │   │   └── secrets.meta  # Timestamps (epoch)
-│   └── project-b/
+│   └── <project-hash>/
 │       ├── secrets.enc
 │       └── secrets.meta
 └── refresh.log           # Audit log (refreshes only)
 ```
 
-#### 2.3 Cache Builder (Corrected)
+**Cache key:** `project-hash` = sha256 of the absolute project path (prevents name collisions).
+
+#### 3.3 Cache Builder (Corrected)
 
 ```bash
 #!/bin/bash
-# dev-infra secrets refresh [project]
+# dev-infra secrets refresh --path <project>
 
 set -euo pipefail
 
-PROJECT=${1:-$(basename "$PWD")}
+PROJECT_PATH="$PWD"
+if [[ "${1:-}" == "--path" && -n "${2:-}" ]]; then
+    PROJECT_PATH="$2"
+fi
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
+
 CONFIG_DIR="$HOME/.config/dev-infra"
-CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
 REGISTRY="$CONFIG_DIR/mcp-registry.json"
-ENABLED_FILE=".enabled-servers"
+ENABLED_FILE="$PROJECT_PATH/.enabled-servers"
+ENABLED_LOCAL="$PROJECT_PATH/.enabled-servers.local"
 AGE_RECIPIENT="$CONFIG_DIR/age/recipient.txt"
 
 SOFT_TTL=14400   # 4 hours
@@ -194,17 +226,20 @@ if [[ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]]; then
     fi
 fi
 
-# Read enabled servers for this project
+# Read enabled servers for this project (plus optional local overrides)
 if [[ ! -f "$ENABLED_FILE" ]]; then
-    echo "No enabled servers for $PROJECT (missing $ENABLED_FILE)"
+    echo "No enabled servers for $PROJECT_NAME (missing $ENABLED_FILE)" >&2
     exit 0
 fi
 
-ENABLED_SERVERS=$(cat "$ENABLED_FILE" | tr '\n' ' ')
+mapfile -t ENABLED_SERVERS < <(
+    cat "$ENABLED_FILE" "$ENABLED_LOCAL" 2>/dev/null | \
+    sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d'
+)
 
 # Build namespaced secrets JSON (only enabled servers)
 SECRETS_JSON="{}"
-for server in $ENABLED_SERVERS; do
+for server in "${ENABLED_SERVERS[@]}"; do
     if jq -e ".servers.\"$server\"" "$REGISTRY" >/dev/null 2>&1; then
         for row in $(jq -r ".servers.\"$server\".secrets // {} | to_entries[] | @base64" "$REGISTRY"); do
             key=$(echo "$row" | base64 -d | jq -r '.key')
@@ -226,20 +261,23 @@ chmod 600 "$CACHE_DIR/secrets.enc"
 NOW=$(date +%s)
 cat > "$CACHE_DIR/secrets.meta" << EOF
 {
-  "project": "$PROJECT",
+  "project_name": "$PROJECT_NAME",
+  "project_path": "$PROJECT_PATH",
+  "project_id": "$PROJECT_ID",
   "refreshed_at": $NOW,
   "soft_expires_at": $((NOW + SOFT_TTL)),
   "hard_expires_at": $((NOW + HARD_TTL)),
-  "enabled_servers": $(echo "$ENABLED_SERVERS" | jq -R -s 'split(" ") | map(select(. != ""))'),
+  "enabled_servers": $(printf '%s\n' "${ENABLED_SERVERS[@]}" | jq -R . | jq -s .),
   "checksum": "$(shasum -a 256 "$CACHE_DIR/secrets.enc" | cut -d' ' -f1)"
 }
 EOF
 
 # Audit log
-echo "$(date +%s) | $PROJECT | refreshed | servers: $ENABLED_SERVERS" >> "$HOME/.cache/dev-infra/refresh.log"
+echo "$(date +%s) | $PROJECT_ID | $PROJECT_NAME | refreshed | servers: ${ENABLED_SERVERS[*]}" >> \
+    "$HOME/.cache/dev-infra/refresh.log"
 ```
 
-#### 2.4 MCP Launcher (Corrected)
+#### 3.4 MCP Launcher (Corrected)
 
 ```bash
 #!/bin/bash
@@ -248,10 +286,17 @@ echo "$(date +%s) | $PROJECT | refreshed | servers: $ENABLED_SERVERS" >> "$HOME/
 set -euo pipefail
 
 SERVER=$1
-PROJECT=${2:-$(basename "$PWD")}
+shift
+PROJECT_PATH="$PWD"
+if [[ "${1:-}" == "--path" && -n "${2:-}" ]]; then
+    PROJECT_PATH="$2"
+fi
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
 
 CONFIG_DIR="$HOME/.config/dev-infra"
-CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
 REGISTRY="$CONFIG_DIR/mcp-registry.json"
 AGE_IDENTITY="$CONFIG_DIR/age/identity.txt"
 
@@ -267,13 +312,13 @@ if [[ -f "$CACHE_DIR/secrets.meta" ]]; then
         NEEDS_REFRESH=false
     elif [[ $NOW -lt $HARD_EXPIRES ]]; then
         # Soft expired, try refresh but allow stale
-        dev-infra secrets refresh "$PROJECT" 2>/dev/null || \
-            echo "WARNING: Using stale cache (soft TTL exceeded)" >&2
+        dev-infra secrets refresh --path "$PROJECT_PATH" 2>/dev/null || \
+            echo "WARNING: Using stale cache (soft TTL exceeded) for $PROJECT_NAME" >&2
         NEEDS_REFRESH=false
     else
         # Hard expired, must refresh
-        if ! dev-infra secrets refresh "$PROJECT"; then
-            echo "ERROR: Cache hard-expired and refresh failed" >&2
+        if ! dev-infra secrets refresh --path "$PROJECT_PATH"; then
+            echo "ERROR: Cache hard-expired and refresh failed for $PROJECT_NAME" >&2
             exit 1
         fi
         NEEDS_REFRESH=false
@@ -281,7 +326,7 @@ if [[ -f "$CACHE_DIR/secrets.meta" ]]; then
 fi
 
 if [[ "$NEEDS_REFRESH" == "true" ]]; then
-    dev-infra secrets refresh "$PROJECT"
+    dev-infra secrets refresh --path "$PROJECT_PATH"
 fi
 
 # Decrypt cache
@@ -298,11 +343,11 @@ for row in $(jq -r ".servers.\"$SERVER\".secrets // {} | to_entries[] | @base64"
 done
 
 # Launch server
-cmd=$(jq -r ".servers.\"$SERVER\".command | @sh" "$REGISTRY" | xargs)
-exec $cmd
+readarray -t cmd < <(jq -r ".servers.\"$SERVER\".command[]" "$REGISTRY")
+exec "${cmd[@]}"
 ```
 
-#### 2.5 LaunchAgent with Wrapper (No Hardcoded Token)
+#### 3.5 LaunchAgent with Wrapper (No Hardcoded Token)
 
 **Wrapper script:** `scripts/secrets-refresh-wrapper.sh`
 ```bash
@@ -315,6 +360,8 @@ fi
 
 exec "$HOME/Development/Projects/dev-infra/scripts/dev-infra" secrets refresh-all
 ```
+
+`refresh-all` iterates `~/.config/dev-infra/projects.json`.
 
 **LaunchAgent plist:**
 ```xml
@@ -340,7 +387,7 @@ exec "$HOME/Development/Projects/dev-infra/scripts/dev-infra" secrets refresh-al
 
 ---
 
-### 3. Project Scaffolding
+### 4. Project Scaffolding
 
 **Command:** `dev-infra scaffold <project-name> [--path <dir>]`
 
@@ -349,10 +396,14 @@ exec "$HOME/Development/Projects/dev-infra/scripts/dev-infra" secrets refresh-al
 <project>/
 ├── .envrc                    # Sources dev-infra helpers
 ├── .mcp.json                 # MCP config (generated)
-├── .enabled-servers          # List of enabled MCP servers
-├── .gitignore                # Includes .enabled-servers, .env*
+├── .enabled-servers          # Committed list of required MCP servers
+├── .enabled-servers.local    # Optional personal additions (gitignored)
+├── .gitignore                # Includes .enabled-servers.local, .env*
 └── CLAUDE.md                 # Project instructions with dev-infra reference
 ```
+
+`dev-infra scaffold` creates `.enabled-servers`; `.enabled-servers.local` is optional for personal additions.
+Scaffold should also register the project path in `~/.config/dev-infra/projects.json`.
 
 **Template `.envrc`:**
 ```bash
@@ -371,26 +422,33 @@ dev_infra_load_mcp
 
 ---
 
-### 4. CLI Commands
+### 5. CLI Commands
 
 ```bash
 # Project scaffolding
-dev-infra scaffold <name>           # Create new project with dev-infra integration
-dev-infra scaffold <name> --minimal # Minimal setup (just .envrc)
+dev-infra scaffold <name> [--path <dir>]           # Create new project with dev-infra integration
+dev-infra scaffold <name> --minimal [--path <dir>] # Minimal setup (just .envrc)
+
+# Project registry
+dev-infra projects list                  # Show registered project paths
+dev-infra projects add --path <dir>      # Register project for refresh-all
+dev-infra projects remove --path <dir>   # Unregister project
 
 # MCP management
-dev-infra mcp list                  # Show all available servers
-dev-infra mcp list --enabled        # Show enabled for current project
-dev-infra mcp list --tag frontend   # Filter by tag
-dev-infra mcp enable <server>       # Enable server for current project
-dev-infra mcp disable <server>      # Disable server
-dev-infra mcp status                # Show MCP health for project
+dev-infra mcp list [--path <dir>]                # Show all available servers
+dev-infra mcp list --enabled [--path <dir>]      # Show enabled for project
+dev-infra mcp list --tag frontend [--path <dir>] # Filter by tag
+dev-infra mcp enable <server> [--path <dir>]     # Writes .enabled-servers
+dev-infra mcp enable <server> --local [--path <dir>]  # Writes .enabled-servers.local
+dev-infra mcp disable <server> [--path <dir>]
+dev-infra mcp disable <server> --local [--path <dir>]
+dev-infra mcp status [--path <dir>]              # Show MCP health for project
 
 # Secrets management
-dev-infra secrets refresh           # Refresh cache for current project
-dev-infra secrets refresh-all       # Refresh all project caches
-dev-infra secrets status            # Show cache age, enabled servers
-dev-infra secrets setup             # One-time age keypair setup
+dev-infra secrets refresh [--path <dir>]   # Refresh cache for project
+dev-infra secrets refresh-all              # Uses ~/.config/dev-infra/projects.json
+dev-infra secrets status [--path <dir>]    # Show cache age, enabled servers
+dev-infra secrets setup                    # One-time age keypair setup
 
 # Sync/maintenance
 dev-infra sync                      # Update project from dev-infra changes
@@ -429,6 +487,7 @@ ssh tw "export OP_SERVICE_ACCOUNT_TOKEN=\$(cat ~/.config/op/service-account-toke
 | Task | Deliverable |
 |------|-------------|
 | Implement `dev-infra` main CLI | `scripts/dev-infra` |
+| Implement `projects list/add/remove` | Subcommands + `projects.json` management |
 | Implement `mcp list/enable/disable` | Subcommands |
 | Implement `secrets refresh/status` | Subcommands |
 | Create wrapper for LaunchAgent | `scripts/secrets-refresh-wrapper.sh` |
@@ -469,6 +528,7 @@ ssh tw "export OP_SERVICE_ACCOUNT_TOKEN=\$(cat ~/.config/op/service-account-toke
 - [ ] Cache refresh works on schedule
 - [ ] Stale cache with warning works (soft TTL exceeded)
 - [ ] Hard TTL expired forces refresh or fails
+- [ ] `projects.json` includes all projects targeted by refresh-all
 
 ### Headless (Agent Alpha)
 - [ ] `op read` works without GUI prompts
@@ -488,6 +548,9 @@ ssh tw "export OP_SERVICE_ACCOUNT_TOKEN=\$(cat ~/.config/op/service-account-toke
 | Secret granularity | Per-project + namespaced | Isolation + no collisions |
 | Audit scope | Refresh logs only | Per-use logging excessive for dev keys |
 | Linux support | Not needed | macOS only for foreseeable future |
+| `.enabled-servers` scope | Committed (team-shared) | Avoids per-dev drift |
+| Local overrides | `.enabled-servers.local` | Allows personal additions without affecting team |
+| Project discovery | Explicit `projects.json` | Avoids implicit filesystem scanning |
 
 ---
 

@@ -48,6 +48,10 @@ Based on your review, we made the following corrections:
 | Namespace collisions possible | Keys namespaced as `server.ENV_VAR` |
 | Date parsing mismatch | Using epoch seconds throughout |
 | Audit claim overstated | Clarified: refresh logs only (acceptable for dev keys) |
+| Project name collisions | Cache key is hash of absolute project path |
+| CWD-dependent paths | Commands accept `--path` and resolve files from project root |
+| Refresh-all discovery | Explicit `projects.json` registry |
+| Team enablement vs local | `.enabled-servers` committed; `.enabled-servers.local` optional |
 
 ---
 
@@ -55,24 +59,25 @@ Based on your review, we made the following corrections:
 
 ### 1. Age Keypair Implementation
 
-**Location:** `MCP_SECRETS_ARCHITECTURE.md` lines 130-155, 175-220
+**Location:** `MCP_SECRETS_ARCHITECTURE.md` → “Age Keypair Setup”
 
 Questions:
 - Is the keypair generation correct?
 - Is the encrypt/decrypt usage correct?
 - Any concerns with storing identity.txt at 600 perms?
 
-### 2. Per-Project Cache Isolation
+### 2. Per-Project Cache Isolation + Hashing
 
-**Location:** `DEV_INFRA_IMPLEMENTATION_PLAN.md` lines 95-130
+**Location:** `DEV_INFRA_IMPLEMENTATION_PLAN.md` → “Cache Structure” + “Cache Builder”
 
 Questions:
-- Is the `.enabled-servers` file approach sound?
+- Is the `.enabled-servers` + `.enabled-servers.local` approach sound?
+- Any concerns with hashing absolute paths for cache keys?
 - Any issues with the namespace scheme (`server.ENV_VAR`)?
 
 ### 3. TTL Strategy
 
-**Location:** `MCP_SECRETS_ARCHITECTURE.md` lines 260-275
+**Location:** `MCP_SECRETS_ARCHITECTURE.md` → “MCP Launcher (Corrected)”
 
 Implemented: Soft TTL 4hr (warn on stale), Hard TTL 24hr (fail)
 
@@ -80,9 +85,17 @@ Questions:
 - Is the soft/hard TTL distinction correctly implemented?
 - Any edge cases in the refresh_if_needed logic?
 
-### 4. LaunchAgent Token Injection
+### 4. Project Registry + `--path` Semantics
 
-**Location:** `DEV_INFRA_IMPLEMENTATION_PLAN.md` lines 175-210
+**Location:** `DEV_INFRA_IMPLEMENTATION_PLAN.md` → “Project Registry” + CLI Commands
+
+Questions:
+- Is `projects.json` the right source of truth for refresh-all?
+- Are there better ergonomics for `--path` across commands?
+
+### 5. LaunchAgent Token Injection
+
+**Location:** `DEV_INFRA_IMPLEMENTATION_PLAN.md` → “LaunchAgent with Wrapper”
 
 Questions:
 - Does the wrapper pattern satisfy "no hardcoded secrets in plists"?
