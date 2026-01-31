@@ -1,0 +1,64 @@
+name: Brain/Agent E2E Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: 'Task timeout in seconds'
+        required: false
+        default: '120'
+      skip_cleanup:
+        description: 'Skip cleanup (leave artifacts for inspection)'
+        required: false
+        type: boolean
+        default: false
+
+# This workflow runs on a self-hosted runner (Brain Mac)
+# It tests the distributed development workflow with Agent Alpha
+
+jobs:
+  e2e-test:
+    name: Brain/Agent E2E
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify Agent Connectivity
+        run: |
+          echo "=== Pre-flight Check ==="
+          agent status || exit 1
+
+      - name: Run E2E Test
+        id: e2e
+        run: |
+          ./tests/system/test-brain-agent-e2e.sh
+        env:
+          E2E_TIMEOUT: ${{ inputs.timeout }}
+
+      - name: Collect Logs (on failure)
+        if: failure()
+        run: |
+          echo "=== Agent Alpha tmux sessions ==="
+          ssh tw "tmux list-sessions 2>/dev/null || echo 'No sessions'"
+
+          echo "=== Recent handoffs ==="
+          ssh tw "ls -lt ~/handoffs/ | head -10"
+
+          echo "=== Latest response ==="
+          ssh tw "cat ~/handoffs/response-*.md 2>/dev/null | tail -50 || echo 'No response'"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Brain/Agent E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.e2e.outcome }}" == "success" ]; then
+            echo "✅ **All phases passed**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Test failed** - check logs for details" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Timeout: ${{ inputs.timeout }}s" >> $GITHUB_STEP_SUMMARY

@@ -2,6 +2,16 @@
 # tests/system/test-brain-agent-e2e.sh
 # Brain/Agent E2E System Test
 # Run from Brain: ./tests/system/test-brain-agent-e2e.sh
+#
+# Requirements:
+#   - SSH access to Agent Alpha (tw)
+#   - agent command in PATH
+#   - Claude Code installed on Agent Alpha
+#
+# Optional:
+#   - SMB mount for faster file access (Finder: Cmd+K → smb://192.168.1.245/tywhitaker)
+#
+# CI: Triggered manually via GitHub Actions workflow brain-agent-e2e.yml
 
 set -euo pipefail
 
