@@ -2,7 +2,33 @@
 
 ## Open Items
 
-No open items.
+### Consolidate docs/ files
+
+**Priority:** Low
+
+35 markdown files is excessive. Merge related guides into fewer, more comprehensive documents.
+
+**Added:** 2026-01-31
+
+---
+
+### Update CHANGELOG.md
+
+**Priority:** Low
+
+Still shows [Unreleased]. Should bump version to reflect recent Brain/Agent work.
+
+**Added:** 2026-01-31
+
+---
+
+### Add version tag
+
+**Priority:** Low
+
+No git tags exist. Tag v1.2.0 for Brain/Agent infrastructure milestone.
+
+**Added:** 2026-01-31
 
 ---
 
