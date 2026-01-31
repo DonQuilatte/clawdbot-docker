@@ -1,6 +1,8 @@
 #!/bin/bash
 # Setup Automated Weekly Testing for Clawdbot
 
+set -euo pipefail
+
 echo "Setting up automated weekly health checks..."
 
 # Create logs directory

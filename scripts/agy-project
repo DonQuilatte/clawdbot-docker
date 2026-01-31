@@ -6,17 +6,25 @@
 #        agy-project result <job-id>
 #        agy-project attach <job-id>
 
-set -e
+set -euo pipefail
+
+# Source common library for colors and utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+else
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    YELLOW='\033[0;33m'
+    NC='\033[0m'
+fi
 
 TW_CONTROL="$HOME/bin/tw"
 # Use \$HOME so it expands on the remote machine, not locally
 PROJECTS_DIR="\$HOME/Development/Projects"
 JOBS_DIR="\$HOME/Development/.agy-jobs"
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[0;33m'
-NC='\033[0m'
 
 usage() {
     echo "Usage: agy-project <repo-url-or-name> [initial-prompt]"

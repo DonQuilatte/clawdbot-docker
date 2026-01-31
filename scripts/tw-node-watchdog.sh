@@ -7,6 +7,8 @@
 # Run this on the GATEWAY machine (Primary Mac).
 # ==============================================================================
 
+set -uo pipefail
+
 NODE_NAME="TW"
 NODE_HOST="tw"  # SSH host alias
 GATEWAY_PORT="18789"

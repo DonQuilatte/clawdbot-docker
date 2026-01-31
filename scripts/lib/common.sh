@@ -1,6 +1,26 @@
 #!/bin/bash
 # scripts/lib/common.sh
 # Common infrastructure functions for dev-infra.
+#
+# Usage: source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# Or:    source "$HOME/Development/Projects/dev-infra/scripts/lib/common.sh"
+#
+# This library provides:
+#   - Color definitions and output functions
+#   - Environment loading (.env, 1Password)
+#   - SSH utilities
+#   - Token management
+#   - Script initialization (strict mode)
+
+#------------------------------------------------------------------------------
+# Strict Mode Initialization
+#------------------------------------------------------------------------------
+# Call this at the start of scripts for consistent error handling
+init_strict_mode() {
+    set -euo pipefail
+    # Trap errors and provide context
+    trap 'echo -e "${RED:-}Error on line $LINENO${NC:-}" >&2' ERR
+}
 
 #------------------------------------------------------------------------------
 # Color Definitions (centralized - source this file instead of duplicating)
@@ -138,4 +158,111 @@ get_gateway_token() {
         # Return literal value
         echo "$token_ref"
     fi
+}
+
+#------------------------------------------------------------------------------
+# Path Resolution
+#------------------------------------------------------------------------------
+# Get the dev-infra root directory
+get_dev_infra_root() {
+    echo "$HOME/Development/Projects/dev-infra"
+}
+
+# Resolve script directory (call from within your script)
+# Usage: SCRIPT_DIR="$(get_script_dir)"
+get_script_dir() {
+    cd "$(dirname "${BASH_SOURCE[1]}")" && pwd
+}
+
+#------------------------------------------------------------------------------
+# Validation Functions
+#------------------------------------------------------------------------------
+# Check if a command exists
+require_cmd() {
+    local cmd="$1"
+    local msg="${2:-$cmd is required but not installed}"
+    if ! command -v "$cmd" &>/dev/null; then
+        print_error "$msg"
+        exit 1
+    fi
+}
+
+# Check if a file exists
+require_file() {
+    local file="$1"
+    local msg="${2:-Required file not found: $file}"
+    if [[ ! -f "$file" ]]; then
+        print_error "$msg"
+        exit 1
+    fi
+}
+
+# Check if a directory exists
+require_dir() {
+    local dir="$1"
+    local msg="${2:-Required directory not found: $dir}"
+    if [[ ! -d "$dir" ]]; then
+        print_error "$msg"
+        exit 1
+    fi
+}
+
+#------------------------------------------------------------------------------
+# Logging Functions
+#------------------------------------------------------------------------------
+# Log to stderr (for scripts that output to stdout)
+log_debug() {
+    [[ "${DEBUG:-}" == "1" ]] && echo -e "${CYAN}[DEBUG]${NC} $1" >&2
+}
+
+log_verbose() {
+    [[ "${VERBOSE:-}" == "1" ]] && echo -e "${BLUE}[INFO]${NC} $1" >&2
+}
+
+#------------------------------------------------------------------------------
+# Progress Indicators
+#------------------------------------------------------------------------------
+# Simple spinner for long-running operations
+# Usage: long_command & spinner $! "Processing..."
+spinner() {
+    local pid=$1
+    local msg="${2:-Working...}"
+    local spin='-\|/'
+    local i=0
+
+    while kill -0 "$pid" 2>/dev/null; do
+        i=$(( (i+1) % 4 ))
+        printf "\r${BLUE}%s${NC} %s" "${spin:$i:1}" "$msg"
+        sleep 0.1
+    done
+    printf "\r"
+}
+
+#------------------------------------------------------------------------------
+# Retry Logic
+#------------------------------------------------------------------------------
+# Retry a command with exponential backoff
+# Usage: retry 3 some_command arg1 arg2
+retry() {
+    local max_attempts=$1
+    shift
+    local attempt=1
+    local delay=2
+
+    while [[ $attempt -le $max_attempts ]]; do
+        if "$@"; then
+            return 0
+        fi
+
+        if [[ $attempt -lt $max_attempts ]]; then
+            print_warning "Attempt $attempt/$max_attempts failed. Retrying in ${delay}s..."
+            sleep $delay
+            delay=$((delay * 2))
+        fi
+
+        ((attempt++))
+    done
+
+    print_error "All $max_attempts attempts failed"
+    return 1
 }

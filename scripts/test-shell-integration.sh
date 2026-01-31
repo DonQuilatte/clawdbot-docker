@@ -1,6 +1,8 @@
 #!/bin/bash
 # Test shell integration without modifying your shell
 
+set -euo pipefail
+
 echo "=== Testing AGY Shell Integration ==="
 echo ""
 

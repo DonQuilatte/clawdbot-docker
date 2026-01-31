@@ -2,6 +2,8 @@
 # TW Remote Node Health Monitor
 # Checks Load and Thermal state. Escalates via iMessage if critical.
 
+set -uo pipefail
+
 REMOTE_HOST="tywhitaker@192.168.1.245"
 ALERT_RECIPIENT="roller-erasers.0b@icloud.com"  # Using your git email
 # Alternatively, you can put a phone number here: ALERT_RECIPIENT="+15550000000"

@@ -9,18 +9,16 @@
 #   agy-sync --register <path>  # Register new project
 #   agy-sync --use-symlinks     # Convert project to use symlinks
 
-set -u
+# Source common library for colors and utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
 
-DEV_INFRA="$HOME/Development/Projects/dev-infra"
+set -euo pipefail
+
+DEV_INFRA="$(get_dev_infra_root)"
 CONFIG_FILE="$DEV_INFRA/config/downstream-deps.yml"
 VERSION_FILE="$DEV_INFRA/.antigravity/.dev-infra-version"
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
 
 # Get current dev-infra version (git commit short hash)
 get_dev_infra_version() {

@@ -1,12 +1,22 @@
 #!/bin/bash
 # Reboot Survival Test - Tests automatic startup after system reboot
 
+set -euo pipefail
+
+# Source common library for colors and utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+    source "$SCRIPT_DIR/lib/common.sh"
+else
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+fi
+
 REMOTE_HOST="tywhitaker@192.168.1.245"
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
 
 echo "=========================================="
 echo "Reboot Survival Test"

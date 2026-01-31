@@ -2,6 +2,8 @@
 # Weekly Clawdbot Health Check
 # Runs every Monday at 9 AM
 
+set -euo pipefail
+
 LOG_DIR="$HOME/logs"
 LOG_FILE="$LOG_DIR/clawdbot-weekly-tests.log"
 

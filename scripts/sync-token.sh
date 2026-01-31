@@ -2,6 +2,8 @@
 # scripts/sync-token.sh
 # Synchronizes the CLAWDBOT_GATEWAY_TOKEN from .env to local and remote config files.
 
+set -euo pipefail
+
 # Check for .env
 if [ ! -f .env ]; then
     echo "❌ ERROR: .env file not found"

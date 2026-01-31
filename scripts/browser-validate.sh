@@ -2,6 +2,8 @@
 # Clawdbot Browser Validation - Quick Test
 # Perfect for running in Claude browser chat
 
+set -uo pipefail
+
 echo "╔════════════════════════════════════════╗"
 echo "║   Clawdbot Validation Test Suite      ║"
 echo "╚════════════════════════════════════════╝"
