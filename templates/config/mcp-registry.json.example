@@ -1,0 +1,41 @@
+{
+  "$schema": "./mcp-registry.schema.json",
+  "version": "1.0",
+  "description": "MCP server registry for dev-infra",
+  "servers": {
+    "filesystem": {
+      "name": "Filesystem",
+      "description": "Local filesystem access for Claude",
+      "command": ["npx", "-y", "@anthropic/mcp-server-filesystem"],
+      "secrets": {},
+      "tags": ["core"]
+    },
+    "stitch": {
+      "name": "Google Stitch",
+      "description": "AI UI design tool powered by Gemini 2.5 Pro",
+      "command": ["npx", "-y", "@anthropic/stitch-mcp"],
+      "secrets": {
+        "stitch.STITCH_API_KEY": "op://Developer/Stitch/api-key"
+      },
+      "tags": ["frontend", "design", "ui"]
+    },
+    "tiger": {
+      "name": "Tiger (TimescaleDB)",
+      "description": "PostgreSQL/TimescaleDB cloud database",
+      "command": ["npx", "-y", "@anthropic/mcp-tiger"],
+      "secrets": {
+        "tiger.TIGER_API_KEY": "op://Developer/Tiger/api-key"
+      },
+      "tags": ["database", "backend"]
+    },
+    "context7": {
+      "name": "Context7",
+      "description": "Documentation and context retrieval",
+      "command": ["node", "/path/to/context7-server.js"],
+      "secrets": {
+        "context7.CONTEXT7_API_KEY": "op://Developer/Context7/api-key"
+      },
+      "tags": ["docs", "context"]
+    }
+  }
+}

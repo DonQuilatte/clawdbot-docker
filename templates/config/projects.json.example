@@ -1,0 +1,17 @@
+{
+  "$schema": "./projects.schema.json",
+  "version": "1.0",
+  "description": "Registry of projects for dev-infra secrets refresh-all",
+  "projects": [
+    {
+      "name": "project-a",
+      "path": "/Users/jederlichman/Development/Projects/project-a",
+      "notes": "Main application"
+    },
+    {
+      "name": "project-b",
+      "path": "/Users/jederlichman/Development/Projects/project-b",
+      "notes": "API backend"
+    }
+  ]
+}
