@@ -1,8 +1,35 @@
 # Distributed System Quick Reference
 
-Daily commands for managing the two-Mac Clawdbot setup.
+Daily commands for managing the Brain/Agent distributed development setup.
 
 For Docker commands, see [QUICK_REFERENCE.md](QUICK_REFERENCE.md).
+
+---
+
+## 🧠 Brain/Agent Architecture
+
+| Role | Machine | Purpose |
+|------|---------|---------|
+| **Brain** | Main Mac (192.168.1.230) | Decision-making, orchestration, user interaction |
+| **Agent Alpha** | TW Mac (192.168.1.245) | Task execution, builds, long-running processes |
+
+### Primary Commands (New)
+
+```bash
+agent status              # Check all agent connectivity
+agent dispatch "task"     # Send task to agent
+agent results             # Collect results from agent
+agent shell               # Open shell to agent
+agent list                # Show configured agents
+```
+
+### Legacy Commands (Still Work)
+
+```bash
+tw status                 # Check TW Mac connectivity
+tw run '<cmd>'            # Execute command on TW Mac
+tw-handoff                # Create task handoff
+```
 
 ---
 
@@ -311,4 +338,4 @@ ssh tywhitaker@192.168.1.245 'sudo reboot'
 
 ---
 
-**Last Updated:** 2026-01-27
+**Last Updated:** 2026-01-31
