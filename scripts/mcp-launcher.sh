@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Usage check
 if [[ $# -lt 1 ]]; then
     echo "Usage: mcp-launcher.sh <server> [--path <dir>]" >&2
@@ -64,7 +66,7 @@ NOW=$(date +%s)
 
 # TTL check and refresh logic
 refresh_cache() {
-    "$HOME/Development/Projects/dev-infra/scripts/secrets-refresh.sh" --path "$PROJECT_PATH"
+    "$SCRIPT_DIR/secrets-refresh.sh" --path "$PROJECT_PATH"
 }
 
 check_and_refresh() {

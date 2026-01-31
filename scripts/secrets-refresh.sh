@@ -96,6 +96,22 @@ mapfile -t ENABLED_SERVERS < <(
 
 if [[ ${#ENABLED_SERVERS[@]} -eq 0 ]]; then
     echo "No enabled servers found in $ENABLED_FILE" >&2
+    # Still create empty cache so mcp-launcher doesn't fail
+    echo "{}" | age -r "$(cat "$AGE_RECIPIENT")" -o "$CACHE_DIR/secrets.enc"
+    chmod 600 "$CACHE_DIR/secrets.enc"
+    NOW=$(date +%s)
+    cat > "$CACHE_DIR/secrets.meta" << EOF
+{
+  "project_name": "$PROJECT_NAME",
+  "project_path": "$PROJECT_PATH",
+  "project_id": "$PROJECT_ID",
+  "refreshed_at": $NOW,
+  "soft_expires_at": $((NOW + SOFT_TTL)),
+  "hard_expires_at": $((NOW + HARD_TTL)),
+  "enabled_servers": [],
+  "checksum": "$(shasum -a 256 "$CACHE_DIR/secrets.enc" | cut -d' ' -f1)"
+}
+EOF
     exit 0
 fi
 

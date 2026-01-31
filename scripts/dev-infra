@@ -201,9 +201,11 @@ cmd_mcp_list() {
 
     if $show_enabled; then
         local enabled_file="$project_path/.enabled-servers"
-        if [[ -f "$enabled_file" ]]; then
+        local enabled_local="$project_path/.enabled-servers.local"
+        if [[ -f "$enabled_file" ]] || [[ -f "$enabled_local" ]]; then
             echo "Enabled servers for $(basename "$project_path"):"
-            cat "$enabled_file" | sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' | sed 's/^/  - /'
+            { cat "$enabled_file" 2>/dev/null; cat "$enabled_local" 2>/dev/null; } | \
+                sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' | sort -u | sed 's/^/  - /'
         else
             log_warn "No .enabled-servers file found"
         fi
