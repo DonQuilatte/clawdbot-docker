@@ -1,129 +1,157 @@
-#!/bin/bash
-# secrets-refresh.sh - Build/refresh the secrets cache from 1Password
-# Called by dev-infra CLI and LaunchAgent
+#!/usr/bin/env bash
+# secrets-refresh.sh - Build/refresh encrypted secrets cache for a project
+# RFC v2.1: age keypair encryption, per-project cache, namespaced secrets
 
-set -e
+set -euo pipefail
 
-SECRETS_CACHE="${XDG_RUNTIME_DIR:-/tmp}/dev-infra-secrets"
-SECRETS_MANIFEST="${SECRETS_MANIFEST:-$HOME/.config/dev-infra/secrets.manifest}"
-LOG_FILE="${LOG_FILE:-/tmp/secrets-refresh.log}"
+# Parse --path argument
+PROJECT_PATH="$PWD"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --path)
+            PROJECT_PATH="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
-log() {
-    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
-    echo "$msg" | tee -a "$LOG_FILE"
-}
+# Resolve to absolute path
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
 
-# Ensure 1Password is authenticated
-ensure_op_auth() {
-    # Check for service account token
-    if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
-        return 0
-    fi
+# Directories
+CONFIG_DIR="$HOME/.config/dev-infra"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
+REGISTRY="$CONFIG_DIR/mcp-registry.json"
+AGE_RECIPIENT="$CONFIG_DIR/age/recipient.txt"
+ENABLED_FILE="$PROJECT_PATH/.enabled-servers"
+ENABLED_LOCAL="$PROJECT_PATH/.enabled-servers.local"
+LOG_FILE="$HOME/.cache/dev-infra/refresh.log"
 
-    # Try to load from file
-    local token_file="$HOME/.config/op/service-account-token"
-    if [ -f "$token_file" ]; then
-        export OP_SERVICE_ACCOUNT_TOKEN=$(cat "$token_file")
-        return 0
-    fi
+# TTL values (seconds)
+SOFT_TTL=14400   # 4 hours
+HARD_TTL=86400   # 24 hours
 
-    # Fall back to claude-dev-token
-    token_file="$HOME/.config/op/claude-dev-token"
-    if [ -f "$token_file" ]; then
-        export OP_SERVICE_ACCOUNT_TOKEN=$(cat "$token_file")
-        return 0
-    fi
+# Ensure cache directory exists with correct permissions
+mkdir -p "$CACHE_DIR"
+chmod 700 "$CACHE_DIR"
+mkdir -p "$(dirname "$LOG_FILE")"
 
-    log "ERROR: No 1Password authentication available"
-    return 1
-}
+# Check age keypair exists
+if [[ ! -f "$AGE_RECIPIENT" ]]; then
+    echo "ERROR: Age keypair not found. Run: dev-infra secrets setup" >&2
+    exit 1
+fi
 
-# Refresh a single secret
-refresh_secret() {
-    local ref="$1"
-    local cache_key=$(echo "$ref" | md5 -q)
-    local cache_file="$SECRETS_CACHE/$cache_key"
+# Check registry exists
+if [[ ! -f "$REGISTRY" ]]; then
+    echo "ERROR: MCP registry not found at $REGISTRY" >&2
+    echo "Copy from: templates/config/mcp-registry.json.example" >&2
+    exit 1
+fi
 
-    if value=$(op read "$ref" 2>/dev/null); then
-        echo "$value" > "$cache_file"
-        chmod 600 "$cache_file"
-        log "Cached: $ref"
-        return 0
+# Load 1Password token from secure file (NOT hardcoded anywhere)
+if [[ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]]; then
+    TOKEN_FILE="$HOME/.config/op/service-account-token"
+    if [[ -f "$TOKEN_FILE" ]]; then
+        export OP_SERVICE_ACCOUNT_TOKEN=$(cat "$TOKEN_FILE")
     else
-        log "WARN: Failed to read: $ref"
-        return 1
-    fi
-}
-
-# Default secrets to cache (common across projects)
-default_secrets() {
-    cat << 'EOF'
-op://Developer/Anthropic Claude/API Key
-op://Private/Clawdbot Gateway Token/token
-op://Developer/GitHub/token
-op://Developer/npm/token
-EOF
-}
-
-# Load secrets manifest
-load_manifest() {
-    if [ -f "$SECRETS_MANIFEST" ]; then
-        cat "$SECRETS_MANIFEST"
-    else
-        default_secrets
-    fi
-}
-
-# Main
-main() {
-    log "Starting secrets refresh..."
-
-    # Ensure authentication
-    ensure_op_auth || exit 1
-
-    # Verify authentication works
-    if ! op whoami &>/dev/null; then
-        log "ERROR: 1Password authentication failed"
+        echo "ERROR: OP_SERVICE_ACCOUNT_TOKEN not set and $TOKEN_FILE missing" >&2
         exit 1
     fi
+fi
 
-    # Create cache directory
-    mkdir -p "$SECRETS_CACHE"
-    chmod 700 "$SECRETS_CACHE"
+# Read enabled servers for this project (plus optional local overrides)
+if [[ ! -f "$ENABLED_FILE" ]]; then
+    echo "No enabled servers for $PROJECT_NAME (missing $ENABLED_FILE)" >&2
+    # Create empty cache
+    echo "{}" | age -r "$(cat "$AGE_RECIPIENT")" -o "$CACHE_DIR/secrets.enc"
+    chmod 600 "$CACHE_DIR/secrets.enc"
+    NOW=$(date +%s)
+    cat > "$CACHE_DIR/secrets.meta" << EOF
+{
+  "project_name": "$PROJECT_NAME",
+  "project_path": "$PROJECT_PATH",
+  "project_id": "$PROJECT_ID",
+  "refreshed_at": $NOW,
+  "soft_expires_at": $((NOW + SOFT_TTL)),
+  "hard_expires_at": $((NOW + HARD_TTL)),
+  "enabled_servers": [],
+  "checksum": "$(shasum -a 256 "$CACHE_DIR/secrets.enc" | cut -d' ' -f1)"
+}
+EOF
+    exit 0
+fi
 
-    # Track stats
-    local total=0
-    local success=0
-    local failed=0
+# Merge .enabled-servers and .enabled-servers.local
+mapfile -t ENABLED_SERVERS < <(
+    { cat "$ENABLED_FILE" 2>/dev/null; cat "$ENABLED_LOCAL" 2>/dev/null; } | \
+    sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' | \
+    sort -u
+)
 
-    # Refresh each secret
-    while IFS= read -r ref || [ -n "$ref" ]; do
-        # Skip empty lines and comments
-        [[ -z "$ref" || "$ref" == \#* ]] && continue
+if [[ ${#ENABLED_SERVERS[@]} -eq 0 ]]; then
+    echo "No enabled servers found in $ENABLED_FILE" >&2
+    exit 0
+fi
 
-        total=$((total + 1))
-        if refresh_secret "$ref"; then
-            success=$((success + 1))
-        else
-            failed=$((failed + 1))
-        fi
-    done < <(load_manifest)
+# Build namespaced secrets JSON (ONLY enabled servers)
+SECRETS_JSON="{}"
+FETCH_ERRORS=0
 
-    log "Refresh complete: $success/$total succeeded, $failed failed"
+for server in "${ENABLED_SERVERS[@]}"; do
+    [[ -z "$server" ]] && continue
 
-    # Also refresh any project-specific secrets
-    if [ -f ".env.op" ]; then
-        log "Found .env.op - refreshing project secrets..."
-        while IFS='=' read -r key ref || [ -n "$key" ]; do
-            [[ -z "$key" || "$key" == \#* ]] && continue
-            refresh_secret "$ref" || true
-        done < ".env.op"
+    if ! jq -e ".servers.\"$server\"" "$REGISTRY" >/dev/null 2>&1; then
+        echo "WARNING: Server '$server' not found in registry" >&2
+        continue
     fi
 
-    log "Secrets cache ready: $SECRETS_CACHE"
-}
+    # Read secrets for this server
+    while IFS= read -r row; do
+        [[ -z "$row" ]] && continue
+        key=$(echo "$row" | base64 -d | jq -r '.key')
+        op_ref=$(echo "$row" | base64 -d | jq -r '.value')
 
-# Run if not sourced
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    main "$@"
+        if value=$(op read "$op_ref" 2>/dev/null); then
+            if [[ -n "$value" ]]; then
+                SECRETS_JSON=$(echo "$SECRETS_JSON" | jq \
+                    --arg k "$key" --arg v "$value" '. + {($k): $v}')
+            fi
+        else
+            echo "WARNING: Failed to read secret for $key" >&2
+            ((FETCH_ERRORS++)) || true
+        fi
+    done < <(jq -r ".servers.\"$server\".secrets // {} | to_entries[] | @base64" "$REGISTRY")
+done
+
+# Encrypt with age keypair (correct usage: -r for recipient)
+echo "$SECRETS_JSON" | age -r "$(cat "$AGE_RECIPIENT")" -o "$CACHE_DIR/secrets.enc"
+chmod 600 "$CACHE_DIR/secrets.enc"
+
+# Write metadata with epoch timestamps
+NOW=$(date +%s)
+cat > "$CACHE_DIR/secrets.meta" << EOF
+{
+  "project_name": "$PROJECT_NAME",
+  "project_path": "$PROJECT_PATH",
+  "project_id": "$PROJECT_ID",
+  "refreshed_at": $NOW,
+  "soft_expires_at": $((NOW + SOFT_TTL)),
+  "hard_expires_at": $((NOW + HARD_TTL)),
+  "enabled_servers": $(printf '%s\n' "${ENABLED_SERVERS[@]}" | jq -R . | jq -s .),
+  "checksum": "$(shasum -a 256 "$CACHE_DIR/secrets.enc" | cut -d' ' -f1)"
+}
+EOF
+
+# Audit log (refreshes only, not per-use)
+echo "$NOW | $PROJECT_ID | $PROJECT_NAME | refreshed | servers: ${ENABLED_SERVERS[*]}" >> "$LOG_FILE"
+
+echo "✅ Refreshed cache for $PROJECT_NAME (${#ENABLED_SERVERS[@]} servers)"
+if [[ $FETCH_ERRORS -gt 0 ]]; then
+    echo "⚠️  $FETCH_ERRORS secret(s) failed to fetch"
 fi

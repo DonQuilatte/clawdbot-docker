@@ -1,112 +1,134 @@
-#!/bin/bash
-# mcp-launcher.sh - Launch MCP servers with secrets injected
-# Reads secrets from cache, falls back to 1Password if needed
+#!/usr/bin/env bash
+# mcp-launcher.sh - Launch MCP server with secrets from encrypted cache
+# RFC v2.1: TTL check, namespace stripping, array-safe exec
 
-set -e
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SECRETS_CACHE="${XDG_RUNTIME_DIR:-/tmp}/dev-infra-secrets"
-MCP_CONFIGS_DIR="${MCP_CONFIGS_DIR:-$HOME/.config/dev-infra/mcp}"
+# Usage check
+if [[ $# -lt 1 ]]; then
+    echo "Usage: mcp-launcher.sh <server> [--path <dir>]" >&2
+    exit 1
+fi
 
-# Get secret from cache or 1Password
-get_secret() {
-    local ref="$1"
-    local cache_key=$(echo "$ref" | md5 -q)
-    local cache_file="$SECRETS_CACHE/$cache_key"
+SERVER="$1"
+shift
 
-    if [ -f "$cache_file" ]; then
-        cat "$cache_file"
-        return 0
+# Parse --path argument
+PROJECT_PATH="$PWD"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --path)
+            PROJECT_PATH="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Resolve to absolute path
+PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd)"
+PROJECT_ID=$(printf '%s' "$PROJECT_PATH" | shasum -a 256 | cut -c1-12)
+PROJECT_NAME=$(basename "$PROJECT_PATH")
+
+# Directories
+CONFIG_DIR="$HOME/.config/dev-infra"
+CACHE_DIR="$HOME/.cache/dev-infra/projects/$PROJECT_ID"
+REGISTRY="$CONFIG_DIR/mcp-registry.json"
+AGE_IDENTITY="$CONFIG_DIR/age/identity.txt"
+META_FILE="$CACHE_DIR/secrets.meta"
+CACHE_FILE="$CACHE_DIR/secrets.enc"
+
+# Check age identity exists
+if [[ ! -f "$AGE_IDENTITY" ]]; then
+    echo "ERROR: Age identity not found. Run: dev-infra secrets setup" >&2
+    exit 1
+fi
+
+# Check registry exists
+if [[ ! -f "$REGISTRY" ]]; then
+    echo "ERROR: MCP registry not found at $REGISTRY" >&2
+    exit 1
+fi
+
+# Verify server exists in registry
+if ! jq -e ".servers.\"$SERVER\"" "$REGISTRY" >/dev/null 2>&1; then
+    echo "ERROR: Server '$SERVER' not found in registry" >&2
+    echo "Available servers:" >&2
+    jq -r '.servers | keys[]' "$REGISTRY" >&2
+    exit 1
+fi
+
+NOW=$(date +%s)
+
+# TTL check and refresh logic
+refresh_cache() {
+    "$HOME/Development/Projects/dev-infra/scripts/secrets-refresh.sh" --path "$PROJECT_PATH"
+}
+
+check_and_refresh() {
+    # No cache exists - must refresh
+    if [[ ! -f "$META_FILE" ]] || [[ ! -f "$CACHE_FILE" ]]; then
+        echo "No cache found, refreshing..." >&2
+        refresh_cache
+        return
     fi
 
-    # Fall back to 1Password directly
-    if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ] || [ -f "$HOME/.config/op/claude-dev-token" ]; then
-        [ -z "$OP_SERVICE_ACCOUNT_TOKEN" ] && export OP_SERVICE_ACCOUNT_TOKEN=$(cat "$HOME/.config/op/claude-dev-token")
-        op read "$ref" 2>/dev/null
+    local soft_expires hard_expires
+    soft_expires=$(jq -r '.soft_expires_at' "$META_FILE")
+    hard_expires=$(jq -r '.hard_expires_at' "$META_FILE")
+
+    if [[ $NOW -lt $soft_expires ]]; then
+        # Fresh - no refresh needed
+        return
+    elif [[ $NOW -lt $hard_expires ]]; then
+        # Soft expired: try refresh, allow stale on failure
+        echo "Cache soft-expired, attempting refresh..." >&2
+        if ! refresh_cache 2>/dev/null; then
+            echo "WARNING: Using stale cache (soft TTL exceeded, refresh failed)" >&2
+        fi
     else
-        echo "ERROR: Secret not cached and no 1Password auth: $ref" >&2
-        return 1
+        # Hard expired: must refresh
+        echo "Cache hard-expired, refreshing..." >&2
+        if ! refresh_cache; then
+            echo "ERROR: Cache hard-expired and refresh failed for $PROJECT_NAME" >&2
+            exit 1
+        fi
     fi
 }
 
-# MCP server configurations
-declare -A MCP_SERVERS
-MCP_SERVERS=(
-    ["github"]="npx -y @modelcontextprotocol/server-github"
-    ["filesystem"]="npx -y @anthropic-ai/mcp-server-filesystem"
-    ["gitkraken"]="npx -y gitkraken-mcp-server"
-    ["context7"]="npx -y @anthropic-ai/mcp-server-context7"
-    ["docker"]="docker run -i --rm -v /var/run/docker.sock:/var/run/docker.sock mcp/docker"
-    ["postgres"]="npx -y @anthropic-ai/mcp-server-postgres"
-    ["sqlite"]="npx -y @anthropic-ai/mcp-server-sqlite"
-)
+check_and_refresh
 
-# Environment variables needed per server
-declare -A MCP_ENV
-MCP_ENV=(
-    ["github"]="GITHUB_PERSONAL_ACCESS_TOKEN=op://Developer/GitHub/token"
-    ["postgres"]="DATABASE_URL=op://Developer/PostgreSQL/connection_string"
-)
+# Decrypt cache using age keypair (correct usage: -i for identity)
+if [[ ! -f "$CACHE_FILE" ]]; then
+    echo "ERROR: Cache file not found after refresh" >&2
+    exit 1
+fi
 
-# Launch MCP server
-launch_server() {
-    local server="$1"
-    shift
+SECRETS=$(age -d -i "$AGE_IDENTITY" "$CACHE_FILE")
 
-    local cmd="${MCP_SERVERS[$server]}"
-    if [ -z "$cmd" ]; then
-        echo "Unknown MCP server: $server" >&2
-        echo "Available: ${!MCP_SERVERS[*]}" >&2
-        exit 1
+# Export secrets for this server (strip namespace prefix)
+# Registry keys are namespaced as "server.ENV_VAR", we export as "ENV_VAR"
+while IFS= read -r row; do
+    [[ -z "$row" ]] && continue
+    namespaced_key=$(echo "$row" | base64 -d | jq -r '.key')
+    # Strip "server." prefix to get ENV_VAR
+    env_var="${namespaced_key#*.}"
+    value=$(echo "$SECRETS" | jq -r --arg k "$namespaced_key" '.[$k] // empty')
+    if [[ -n "$value" ]]; then
+        export "$env_var=$value"
     fi
+done < <(jq -r ".servers.\"$SERVER\".secrets // {} | to_entries[] | @base64" "$REGISTRY")
 
-    # Set up environment from secrets
-    local env_spec="${MCP_ENV[$server]:-}"
-    if [ -n "$env_spec" ]; then
-        for spec in $env_spec; do
-            local var_name="${spec%%=*}"
-            local secret_ref="${spec#*=}"
-            local value=$(get_secret "$secret_ref")
-            export "$var_name=$value"
-        done
-    fi
+# Array-safe command execution
+# readarray preserves argument boundaries for commands with spaces
+readarray -t cmd < <(jq -r ".servers.\"$SERVER\".command[]" "$REGISTRY")
 
-    # Check for custom config
-    local config_file="$MCP_CONFIGS_DIR/$server.json"
-    if [ -f "$config_file" ]; then
-        # Some MCP servers accept config via stdin or args
-        exec $cmd --config "$config_file" "$@"
-    else
-        exec $cmd "$@"
-    fi
-}
+if [[ ${#cmd[@]} -eq 0 ]]; then
+    echo "ERROR: No command defined for server '$SERVER'" >&2
+    exit 1
+fi
 
-# List available servers
-list_servers() {
-    echo "Available MCP servers:"
-    for server in "${!MCP_SERVERS[@]}"; do
-        echo "  $server"
-    done
-}
-
-# Main
-case "${1:-}" in
-    list|--list|-l)
-        list_servers
-        ;;
-    help|--help|-h)
-        echo "Usage: mcp-launcher.sh <server> [args...]"
-        echo
-        list_servers
-        echo
-        echo "Secrets are loaded from cache or 1Password automatically."
-        ;;
-    "")
-        echo "Error: No server specified" >&2
-        list_servers >&2
-        exit 1
-        ;;
-    *)
-        launch_server "$@"
-        ;;
-esac
+# Launch the server
+exec "${cmd[@]}"

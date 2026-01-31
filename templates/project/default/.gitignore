@@ -12,6 +12,9 @@ out/
 .env.*.local
 *.local.env
 
+# Dev-infra local overrides
+.enabled-servers.local
+
 # IDE
 .idea/
 .vscode/

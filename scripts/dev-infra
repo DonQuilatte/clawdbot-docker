@@ -1,13 +1,16 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # dev-infra - Main CLI for development infrastructure management
-# Manages secrets, MCP servers, project scaffolding, and agent coordination
+# RFC v2.1: Full CLI with secrets, mcp, projects subcommands
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEV_INFRA_ROOT="$(dirname "$SCRIPT_DIR")"
-SECRETS_CACHE="${XDG_RUNTIME_DIR:-/tmp}/dev-infra-secrets"
-SECRETS_CACHE_TTL=3600  # 1 hour
+CONFIG_DIR="$HOME/.config/dev-infra"
+CACHE_DIR="$HOME/.cache/dev-infra"
+REGISTRY="$CONFIG_DIR/mcp-registry.json"
+PROJECTS_FILE="$CONFIG_DIR/projects.json"
+AGE_DIR="$CONFIG_DIR/age"
 
 # Colors
 RED='\033[0;31m'
@@ -18,81 +21,359 @@ NC='\033[0m'
 
 log_info() { echo -e "${BLUE}ℹ${NC} $*"; }
 log_success() { echo -e "${GREEN}✓${NC} $*"; }
-log_warn() { echo -e "${YELLOW}⚠${NC} $*"; }
+log_warn() { echo -e "${YELLOW}⚠${NC} $*" >&2; }
 log_error() { echo -e "${RED}✗${NC} $*" >&2; }
 
-# Check if secrets cache is fresh
-cache_is_fresh() {
-    local cache_file="$1"
-    if [ ! -f "$cache_file" ]; then
-        return 1
-    fi
-    local cache_age=$(($(date +%s) - $(stat -f %m "$cache_file" 2>/dev/null || echo 0)))
-    [ "$cache_age" -lt "$SECRETS_CACHE_TTL" ]
+# Parse --path from any position in args
+parse_path() {
+    local path="$PWD"
+    local args=("$@")
+    for ((i=0; i<${#args[@]}; i++)); do
+        if [[ "${args[$i]}" == "--path" ]] && [[ -n "${args[$((i+1))]:-}" ]]; then
+            path="${args[$((i+1))]}"
+            break
+        fi
+    done
+    cd "$path" && pwd
 }
 
-# Get secret from cache or 1Password
-get_secret() {
-    local ref="$1"
-    local cache_key=$(echo "$ref" | md5 -q)
-    local cache_file="$SECRETS_CACHE/$cache_key"
+# Ensure config directory exists
+ensure_config() {
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$CACHE_DIR"
 
-    mkdir -p "$SECRETS_CACHE"
-    chmod 700 "$SECRETS_CACHE"
+    # Initialize projects.json if missing
+    if [[ ! -f "$PROJECTS_FILE" ]]; then
+        echo '{"projects": []}' > "$PROJECTS_FILE"
+    fi
+}
 
-    if cache_is_fresh "$cache_file"; then
-        cat "$cache_file"
+#=============================================================================
+# SECRETS COMMANDS
+#=============================================================================
+
+cmd_secrets_setup() {
+    log_info "Setting up age keypair..."
+
+    if [[ -f "$AGE_DIR/identity.txt" ]]; then
+        log_warn "Age keypair already exists at $AGE_DIR"
+        echo "Public key: $(cat "$AGE_DIR/recipient.txt")"
         return 0
     fi
 
-    local value
-    if value=$(op read "$ref" 2>/dev/null); then
-        echo "$value" > "$cache_file"
-        chmod 600 "$cache_file"
-        echo "$value"
-    else
-        log_error "Failed to read secret: $ref"
-        return 1
-    fi
+    mkdir -p "$AGE_DIR"
+    chmod 700 "$AGE_DIR"
+
+    # Generate keypair
+    age-keygen -o "$AGE_DIR/identity.txt" 2>&1 | \
+        grep "public key:" | awk '{print $3}' > "$AGE_DIR/recipient.txt"
+
+    chmod 600 "$AGE_DIR/identity.txt"
+    chmod 644 "$AGE_DIR/recipient.txt"
+
+    log_success "Age keypair created"
+    echo "Public key: $(cat "$AGE_DIR/recipient.txt")"
 }
 
-# Refresh all secrets cache
 cmd_secrets_refresh() {
-    log_info "Refreshing secrets cache..."
     exec "$SCRIPT_DIR/secrets-refresh.sh" "$@"
 }
 
-# Clear secrets cache
+cmd_secrets_refresh_all() {
+    ensure_config
+
+    if [[ ! -f "$PROJECTS_FILE" ]]; then
+        log_error "No projects registered. Use: dev-infra projects add --path <dir>"
+        exit 1
+    fi
+
+    local count=0
+    local failed=0
+
+    while IFS= read -r project; do
+        local name path
+        name=$(echo "$project" | jq -r '.name')
+        path=$(echo "$project" | jq -r '.path')
+
+        if [[ -d "$path" ]]; then
+            log_info "Refreshing $name..."
+            if "$SCRIPT_DIR/secrets-refresh.sh" --path "$path"; then
+                ((count++))
+            else
+                ((failed++))
+                log_warn "Failed to refresh $name"
+            fi
+        else
+            log_warn "Project path not found: $path"
+            ((failed++))
+        fi
+    done < <(jq -c '.projects[]' "$PROJECTS_FILE")
+
+    log_success "Refreshed $count project(s)"
+    if [[ $failed -gt 0 ]]; then
+        log_warn "$failed project(s) failed"
+    fi
+}
+
 cmd_secrets_clear() {
-    if [ -d "$SECRETS_CACHE" ]; then
-        rm -rf "$SECRETS_CACHE"
-        log_success "Secrets cache cleared"
+    local project_path
+    project_path=$(parse_path "$@")
+    local project_id
+    project_id=$(printf '%s' "$project_path" | shasum -a 256 | cut -c1-12)
+    local cache_path="$CACHE_DIR/projects/$project_id"
+
+    if [[ -d "$cache_path" ]]; then
+        rm -rf "$cache_path"
+        log_success "Cleared cache for $(basename "$project_path")"
     else
         log_info "No cache to clear"
     fi
 }
 
-# Launch MCP server with secrets
-cmd_mcp() {
+cmd_secrets_status() {
+    local project_path
+    project_path=$(parse_path "$@")
+    local project_id
+    project_id=$(printf '%s' "$project_path" | shasum -a 256 | cut -c1-12)
+    local meta_file="$CACHE_DIR/projects/$project_id/secrets.meta"
+
+    echo "Project: $(basename "$project_path")"
+    echo "Path: $project_path"
+    echo "Cache ID: $project_id"
+    echo
+
+    if [[ ! -f "$meta_file" ]]; then
+        log_warn "No cache found. Run: dev-infra secrets refresh"
+        return
+    fi
+
+    local now refreshed soft_expires hard_expires
+    now=$(date +%s)
+    refreshed=$(jq -r '.refreshed_at' "$meta_file")
+    soft_expires=$(jq -r '.soft_expires_at' "$meta_file")
+    hard_expires=$(jq -r '.hard_expires_at' "$meta_file")
+
+    echo "Refreshed: $(date -r "$refreshed" '+%Y-%m-%d %H:%M:%S')"
+
+    if [[ $now -lt $soft_expires ]]; then
+        local remaining=$(( (soft_expires - now) / 60 ))
+        echo -e "Status: ${GREEN}Fresh${NC} ($remaining min until soft TTL)"
+    elif [[ $now -lt $hard_expires ]]; then
+        local remaining=$(( (hard_expires - now) / 60 ))
+        echo -e "Status: ${YELLOW}Soft expired${NC} ($remaining min until hard TTL)"
+    else
+        echo -e "Status: ${RED}Hard expired${NC}"
+    fi
+
+    echo
+    echo "Enabled servers:"
+    jq -r '.enabled_servers[]' "$meta_file" | sed 's/^/  - /'
+}
+
+#=============================================================================
+# MCP COMMANDS
+#=============================================================================
+
+cmd_mcp_launch() {
     local server="$1"
     shift
     exec "$SCRIPT_DIR/mcp-launcher.sh" "$server" "$@"
 }
 
-# Initialize new project from template
+cmd_mcp_list() {
+    local show_enabled=false
+    local tag_filter=""
+    local project_path="$PWD"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --enabled) show_enabled=true; shift ;;
+            --tag) tag_filter="$2"; shift 2 ;;
+            --path) project_path="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ ! -f "$REGISTRY" ]]; then
+        log_error "MCP registry not found at $REGISTRY"
+        exit 1
+    fi
+
+    if $show_enabled; then
+        local enabled_file="$project_path/.enabled-servers"
+        if [[ -f "$enabled_file" ]]; then
+            echo "Enabled servers for $(basename "$project_path"):"
+            cat "$enabled_file" | sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' | sed 's/^/  - /'
+        else
+            log_warn "No .enabled-servers file found"
+        fi
+        return
+    fi
+
+    echo "Available MCP servers:"
+    echo
+
+    if [[ -n "$tag_filter" ]]; then
+        jq -r ".servers | to_entries[] | select(.value.tags | index(\"$tag_filter\")) | \"  \(.key): \(.value.description)\"" "$REGISTRY"
+    else
+        jq -r '.servers | to_entries[] | "  \(.key): \(.value.description)"' "$REGISTRY"
+    fi
+}
+
+cmd_mcp_enable() {
+    local server="$1"
+    shift
+    local use_local=false
+    local project_path="$PWD"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --local) use_local=true; shift ;;
+            --path) project_path="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    project_path="$(cd "$project_path" && pwd)"
+
+    # Verify server exists
+    if ! jq -e ".servers.\"$server\"" "$REGISTRY" >/dev/null 2>&1; then
+        log_error "Server '$server' not found in registry"
+        exit 1
+    fi
+
+    local enabled_file
+    if $use_local; then
+        enabled_file="$project_path/.enabled-servers.local"
+    else
+        enabled_file="$project_path/.enabled-servers"
+    fi
+
+    # Create file if it doesn't exist
+    touch "$enabled_file"
+
+    # Check if already enabled
+    if grep -qx "$server" "$enabled_file" 2>/dev/null; then
+        log_info "Server '$server' already enabled"
+        return
+    fi
+
+    echo "$server" >> "$enabled_file"
+    log_success "Enabled '$server' in $(basename "$enabled_file")"
+}
+
+cmd_mcp_disable() {
+    local server="$1"
+    shift
+    local use_local=false
+    local project_path="$PWD"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --local) use_local=true; shift ;;
+            --path) project_path="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    project_path="$(cd "$project_path" && pwd)"
+
+    local enabled_file
+    if $use_local; then
+        enabled_file="$project_path/.enabled-servers.local"
+    else
+        enabled_file="$project_path/.enabled-servers"
+    fi
+
+    if [[ ! -f "$enabled_file" ]]; then
+        log_warn "No enabled-servers file found"
+        return
+    fi
+
+    # Remove server from file
+    local temp_file
+    temp_file=$(mktemp)
+    grep -vx "$server" "$enabled_file" > "$temp_file" || true
+    mv "$temp_file" "$enabled_file"
+
+    log_success "Disabled '$server' in $(basename "$enabled_file")"
+}
+
+#=============================================================================
+# PROJECTS COMMANDS
+#=============================================================================
+
+cmd_projects_list() {
+    ensure_config
+
+    if [[ ! -f "$PROJECTS_FILE" ]] || [[ $(jq '.projects | length' "$PROJECTS_FILE") -eq 0 ]]; then
+        log_info "No projects registered"
+        echo "Use: dev-infra projects add --path <dir>"
+        return
+    fi
+
+    echo "Registered projects:"
+    jq -r '.projects[] | "  \(.name): \(.path)"' "$PROJECTS_FILE"
+}
+
+cmd_projects_add() {
+    local project_path
+    project_path=$(parse_path "$@")
+    local project_name
+    project_name=$(basename "$project_path")
+
+    ensure_config
+
+    # Check if already registered
+    if jq -e ".projects[] | select(.path == \"$project_path\")" "$PROJECTS_FILE" >/dev/null 2>&1; then
+        log_info "Project already registered: $project_name"
+        return
+    fi
+
+    # Add to registry
+    local temp_file
+    temp_file=$(mktemp)
+    jq --arg name "$project_name" --arg path "$project_path" \
+        '.projects += [{"name": $name, "path": $path}]' \
+        "$PROJECTS_FILE" > "$temp_file"
+    mv "$temp_file" "$PROJECTS_FILE"
+
+    log_success "Added project: $project_name"
+}
+
+cmd_projects_remove() {
+    local project_path
+    project_path=$(parse_path "$@")
+
+    ensure_config
+
+    local temp_file
+    temp_file=$(mktemp)
+    jq --arg path "$project_path" \
+        '.projects |= map(select(.path != $path))' \
+        "$PROJECTS_FILE" > "$temp_file"
+    mv "$temp_file" "$PROJECTS_FILE"
+
+    log_success "Removed project: $(basename "$project_path")"
+}
+
+#=============================================================================
+# INIT COMMAND (scaffolding)
+#=============================================================================
+
 cmd_init() {
     local project_name="$1"
     local template="${2:-default}"
     local projects_dir="$HOME/Development/Projects"
     local project_path="$projects_dir/$project_name"
 
-    if [ -z "$project_name" ]; then
+    if [[ -z "$project_name" ]]; then
         log_error "Usage: dev-infra init <project-name> [template]"
         echo "Templates: default, api, cli, library"
         exit 1
     fi
 
-    if [ -d "$project_path" ]; then
+    if [[ -d "$project_path" ]]; then
         log_error "Project already exists: $project_path"
         exit 1
     fi
@@ -103,129 +384,104 @@ cmd_init() {
 
     # Copy template files (including dotfiles)
     local template_dir="$DEV_INFRA_ROOT/templates/project/$template"
-    if [ -d "$template_dir" ]; then
+    if [[ -d "$template_dir" ]]; then
         cp -R "$template_dir/"* "$project_path/" 2>/dev/null || true
         cp -R "$template_dir/".* "$project_path/" 2>/dev/null || true
     else
-        # Use default template inline
-        cat > "$project_path/.envrc" << 'EOF'
-# direnv configuration
-# Loads automatically when entering directory
-
-# Source dev-infra environment
-source_env_if_exists ~/.config/dev-infra/env.sh
-
-# Project-specific environment
-export PROJECT_NAME="$(basename $PWD)"
-
-# 1Password secrets (loaded via dev-infra)
-export_function get_secret() {
-    dev-infra secret "$1"
-}
-EOF
-
-        cat > "$project_path/CLAUDE.md" << EOF
-# Claude Rules: $project_name
-
-## Project Overview
-**Purpose:** [Describe project purpose]
-**Tech Stack:** [List technologies]
-
-## Workflow Rules
-- Use dev-infra for secrets management
-- Follow project conventions
-
-## Commands
-\`\`\`bash
-dev-infra secrets refresh  # Refresh secret cache
-dev-infra mcp <server>     # Launch MCP server
-\`\`\`
-EOF
-
-        mkdir -p "$project_path/src" "$project_path/tests" "$project_path/scripts"
+        log_warn "Template '$template' not found, using default structure"
+        # Create minimal structure
+        touch "$project_path/.enabled-servers"
+        echo "# Dev-infra local overrides" > "$project_path/.gitignore"
+        echo ".enabled-servers.local" >> "$project_path/.gitignore"
     fi
 
     # Substitute project name in templates
     find "$project_path" -type f -exec sed -i '' "s/{{PROJECT_NAME}}/$project_name/g" {} \; 2>/dev/null || true
 
+    # Register project
+    cmd_projects_add --path "$project_path"
+
     log_success "Project created: $project_path"
     log_info "Next steps:"
     echo "  cd $project_path"
     echo "  direnv allow"
-    echo "  agy"
+    echo "  dev-infra mcp enable <server>"
+    echo "  dev-infra secrets refresh"
 }
 
-# Health check
+#=============================================================================
+# HEALTH COMMAND
+#=============================================================================
+
 cmd_health() {
     echo "=== Dev Infrastructure Health ==="
     echo
+
+    # Age keypair
+    echo -n "Age keypair: "
+    if [[ -f "$AGE_DIR/identity.txt" ]]; then
+        echo -e "${GREEN}configured${NC}"
+    else
+        echo -e "${RED}not configured${NC} - run: dev-infra secrets setup"
+    fi
 
     # 1Password
     echo -n "1Password CLI: "
     if command -v op &>/dev/null; then
         echo -e "${GREEN}installed${NC}"
-        echo -n "  Auth: "
-        # Check for service account token
-        local token_file="$HOME/.config/op/claude-dev-token"
-        if [ -n "$OP_SERVICE_ACCOUNT_TOKEN" ]; then
-            if OP_SERVICE_ACCOUNT_TOKEN="$OP_SERVICE_ACCOUNT_TOKEN" op whoami &>/dev/null; then
-                echo -e "${GREEN}service account${NC}"
-            else
-                echo -e "${YELLOW}token invalid${NC}"
-            fi
-        elif [ -f "$token_file" ]; then
+        echo -n "  Token: "
+        local token_file="$HOME/.config/op/service-account-token"
+        if [[ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]]; then
+            echo -e "${GREEN}environment${NC}"
+        elif [[ -f "$token_file" ]]; then
             if OP_SERVICE_ACCOUNT_TOKEN=$(cat "$token_file") op whoami &>/dev/null; then
-                echo -e "${GREEN}service account (file)${NC}"
+                echo -e "${GREEN}file (valid)${NC}"
             else
-                echo -e "${YELLOW}token file invalid${NC}"
+                echo -e "${YELLOW}file (invalid)${NC}"
             fi
-        elif op whoami &>/dev/null; then
-            echo -e "${GREEN}interactive session${NC}"
         else
-            echo -e "${YELLOW}not authenticated${NC}"
+            echo -e "${YELLOW}not found${NC}"
         fi
     else
         echo -e "${RED}not installed${NC}"
     fi
 
-    # direnv
-    echo -n "direnv: "
-    if command -v direnv &>/dev/null; then
-        echo -e "${GREEN}installed${NC}"
+    # MCP Registry
+    echo -n "MCP registry: "
+    if [[ -f "$REGISTRY" ]]; then
+        local count
+        count=$(jq '.servers | length' "$REGISTRY")
+        echo -e "${GREEN}$count servers${NC}"
     else
-        echo -e "${YELLOW}not installed${NC}"
+        echo -e "${YELLOW}not configured${NC}"
     fi
 
-    # Claude Code
-    echo -n "Claude Code: "
-    if command -v claude &>/dev/null; then
-        echo -e "${GREEN}installed${NC}"
+    # Projects
+    echo -n "Projects: "
+    if [[ -f "$PROJECTS_FILE" ]]; then
+        local count
+        count=$(jq '.projects | length' "$PROJECTS_FILE")
+        echo -e "${GREEN}$count registered${NC}"
     else
-        echo -e "${RED}not installed${NC}"
+        echo -e "${YELLOW}none${NC}"
     fi
 
     # Agent connectivity
     echo -n "Agent Alpha (TW Mac): "
-    if ssh -o ConnectTimeout=2 tw "echo ok" &>/dev/null; then
+    if ssh -o ConnectTimeout=2 -o BatchMode=yes tw "echo ok" &>/dev/null; then
         echo -e "${GREEN}connected${NC}"
     else
         echo -e "${YELLOW}unreachable${NC}"
-    fi
-
-    # Secrets cache
-    echo -n "Secrets cache: "
-    if [ -d "$SECRETS_CACHE" ]; then
-        local count=$(find "$SECRETS_CACHE" -type f | wc -l | tr -d ' ')
-        echo -e "${GREEN}$count items cached${NC}"
-    else
-        echo -e "${YELLOW}empty${NC}"
     fi
 
     echo
     echo "=== End Health Check ==="
 }
 
-# Sync configuration to agent
+#=============================================================================
+# SYNC COMMAND
+#=============================================================================
+
 cmd_sync() {
     local target="${1:-alpha}"
     log_info "Syncing to agent: $target"
@@ -233,14 +489,23 @@ cmd_sync() {
     case "$target" in
         alpha|tw)
             # Sync 1Password token
-            scp ~/.config/op/claude-dev-token tw:~/.config/op/service-account-token
+            local local_token="$HOME/.config/op/claude-dev-token"
+            if [[ ! -f "$local_token" ]]; then
+                local_token="$HOME/.config/op/service-account-token"
+            fi
+
+            if [[ ! -f "$local_token" ]]; then
+                log_error "No token file found to sync"
+                exit 1
+            fi
+
+            scp "$local_token" tw:~/.config/op/service-account-token
             ssh tw "chmod 600 ~/.config/op/service-account-token"
 
-            # Verify
             if ssh tw 'export OP_SERVICE_ACCOUNT_TOKEN=$(cat ~/.config/op/service-account-token) && op whoami' &>/dev/null; then
                 log_success "1Password token synced and verified"
             else
-                log_error "Token sync failed"
+                log_error "Token sync failed verification"
                 exit 1
             fi
             ;;
@@ -251,51 +516,112 @@ cmd_sync() {
     esac
 }
 
-# Show usage
+#=============================================================================
+# USAGE
+#=============================================================================
+
 usage() {
-    cat << EOF
+    cat << 'EOF'
 dev-infra - Development Infrastructure CLI
 
 Usage: dev-infra <command> [options]
 
-Commands:
-  secrets refresh     Refresh secrets cache from 1Password
-  secrets clear       Clear the secrets cache
-  secret <ref>        Get a single secret (cached)
+Secrets Management:
+  secrets setup                  One-time age keypair setup
+  secrets refresh [--path <dir>] Refresh cache for project
+  secrets refresh-all            Refresh all registered projects
+  secrets clear [--path <dir>]   Clear project cache
+  secrets status [--path <dir>]  Show cache status and TTL
 
-  mcp <server>        Launch MCP server with secrets injected
+MCP Management:
+  mcp <server> [--path <dir>]    Launch MCP server
+  mcp list [--tag <tag>]         List available servers
+  mcp list --enabled [--path]    List enabled for project
+  mcp enable <server> [--path]   Add to .enabled-servers
+  mcp enable <server> --local    Add to .enabled-servers.local
+  mcp disable <server> [--path]  Remove from .enabled-servers
 
-  init <name> [tpl]   Initialize new project from template
-  health              Check infrastructure health
-  sync [agent]        Sync configuration to agent
+Project Registry:
+  projects list                  List registered projects
+  projects add [--path <dir>]    Add project to registry
+  projects remove [--path <dir>] Remove project from registry
 
-  help                Show this help
+Scaffolding:
+  init <name> [template]         Create new project (default, api, cli, library)
+
+Maintenance:
+  health                         Check infrastructure health
+  sync <agent>                   Sync config to agent (alpha/tw)
 
 Examples:
-  dev-infra secrets refresh           # Cache all secrets
-  dev-infra secret "op://vault/item"  # Get specific secret
-  dev-infra mcp github                # Launch GitHub MCP
-  dev-infra init my-api api           # Create new API project
-  dev-infra sync alpha                # Sync to TW Mac
+  dev-infra secrets setup                    # One-time setup
+  dev-infra mcp enable tiger                 # Enable tiger for current project
+  dev-infra secrets refresh                  # Refresh current project
+  dev-infra mcp tiger                        # Launch tiger server
+  dev-infra init my-api api                  # Create new API project
 EOF
 }
 
-# Main dispatch
+#=============================================================================
+# MAIN DISPATCH
+#=============================================================================
+
+ensure_config
+
 case "${1:-}" in
     secrets)
         case "${2:-}" in
-            refresh) shift 2; cmd_secrets_refresh "$@" ;;
-            clear) cmd_secrets_clear ;;
+            setup) cmd_secrets_setup ;;
+            refresh)
+                shift 2
+                if [[ "${1:-}" == "-all" ]] || [[ "${1:-}" == "--all" ]]; then
+                    cmd_secrets_refresh_all
+                else
+                    cmd_secrets_refresh "$@"
+                fi
+                ;;
+            refresh-all) cmd_secrets_refresh_all ;;
+            clear) shift 2; cmd_secrets_clear "$@" ;;
+            status) shift 2; cmd_secrets_status "$@" ;;
             *) usage; exit 1 ;;
         esac
         ;;
-    secret)
-        shift
-        get_secret "$@"
-        ;;
     mcp)
-        shift
-        cmd_mcp "$@"
+        case "${2:-}" in
+            list) shift 2; cmd_mcp_list "$@" ;;
+            enable)
+                shift 2
+                if [[ -z "${1:-}" ]]; then
+                    log_error "Usage: dev-infra mcp enable <server>"
+                    exit 1
+                fi
+                cmd_mcp_enable "$@"
+                ;;
+            disable)
+                shift 2
+                if [[ -z "${1:-}" ]]; then
+                    log_error "Usage: dev-infra mcp disable <server>"
+                    exit 1
+                fi
+                cmd_mcp_disable "$@"
+                ;;
+            "")
+                log_error "Usage: dev-infra mcp <server|list|enable|disable>"
+                exit 1
+                ;;
+            *)
+                shift
+                cmd_mcp_launch "$@"
+                ;;
+        esac
+        ;;
+    projects)
+        case "${2:-}" in
+            list) cmd_projects_list ;;
+            add) shift 2; cmd_projects_add "$@" ;;
+            remove) shift 2; cmd_projects_remove "$@" ;;
+            *) usage; exit 1 ;;
+        esac
         ;;
     init)
         shift
@@ -308,7 +634,10 @@ case "${1:-}" in
         shift
         cmd_sync "$@"
         ;;
-    help|--help|-h|"")
+    help|--help|-h)
+        usage
+        ;;
+    "")
         usage
         ;;
     *)
