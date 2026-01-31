@@ -2,17 +2,21 @@
 
 ## Open Items
 
-### 1. Verify shellcheck CI locally
-
-**Priority:** Low
-
-Run the new shellcheck workflow locally to catch any issues before GitHub CI does.
-
-**Added:** 2026-01-31
+No open items.
 
 ---
 
 ## Resolved
+
+### Verify shellcheck CI locally
+
+**Priority:** Low
+
+**Resolution:** ✅ Fixed 5 bugs (shebang, trap quoting, redirect order, declare/assign). 13 remaining warnings are intentional (unused vars, style). Commit 799d9de.
+
+**Resolved:** 2026-01-31
+
+---
 
 ### Agent Alpha connectivity
 
